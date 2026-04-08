@@ -2,9 +2,9 @@ spring:
   application:
     name: shop_orders
   datasource:
-    url: ${DB_URL:jdbc:mysql://localhost:3306/hyperlocal_platform}
-    username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:Rajnishks@88}
+    url: ${DB_URL:jdbc:mysql://multisuperapp1.cituis86a8r2.us-east-1.rds.amazonaws.com:3306/hyperlocal_platform}
+    username: ${DB_USERNAME:admin}
+    password: ${DB_PASSWORD:multisuperapp1}
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     hibernate:
@@ -15,9 +15,9 @@ spring:
   flyway:
     enabled: ${FLYWAY_ENABLED:true}
     baseline-on-migrate: ${FLYWAY_BASELINE_ON_MIGRATE:true}
-    url: ${FLYWAY_URL:${DB_URL:jdbc:mysql://localhost:3306/hyperlocal_platform}}
-    user: ${FLYWAY_USER:${DB_USERNAME:root}}
-    password: ${FLYWAY_PASSWORD:${DB_PASSWORD:Rajnishks@88}}
+    url: ${FLYWAY_URL:${DB_URL:jdbc:mysql://multisuperapp1.cituis86a8r2.us-east-1.rds.amazonaws.com:3306/hyperlocal_platform}}
+    user: ${FLYWAY_USER:${DB_USERNAME:admin}}
+    password: ${FLYWAY_PASSWORD:${DB_PASSWORD:multisuperapp1}}
 
 server:
   port: ${SERVER_PORT:8083}
