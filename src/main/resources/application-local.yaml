@@ -41,12 +41,3 @@ app:
     hardcoded-value: ${HARDCODED_OTP:123456}
     hardcoded-aadhaar-otp: ${HARDCODED_AADHAAR_OTP:654321}
     expiry-seconds: ${OTP_EXPIRY_SECONDS:300}
-
-management:
-  endpoints:
-    web:
-      exposure:
-        include: health,info
-  endpoint:
-    health:
-      show-details: always
