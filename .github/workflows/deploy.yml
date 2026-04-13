@@ -116,10 +116,14 @@ jobs:
         run: |
           IMAGE_TAG="$APP_NAME:${GITHUB_RUN_NUMBER}"
           ssh -i ~/.ssh/ec2_key "$EC2_USER@${{ steps.target.outputs.host }}" "
-            cd '$EC2_APP_DIR' && \
-            docker rm -f '$CONTAINER_NAME' || true && \
-            docker build -t '$IMAGE_TAG' . && \
-            docker tag '$IMAGE_TAG' '$APP_NAME:latest' && \
+            set -e
+            cd '$EC2_APP_DIR'
+            docker container prune -f
+            docker image prune -af
+            docker builder prune -af
+            docker rm -f '$CONTAINER_NAME' || true
+            docker build -t '$IMAGE_TAG' .
+            docker tag '$IMAGE_TAG' '$APP_NAME:latest'
             docker run -d \
               --name '$CONTAINER_NAME' \
               --restart unless-stopped \
