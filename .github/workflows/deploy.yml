@@ -101,8 +101,9 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/ec2_key
+          printf '%s' "${{ secrets.EC2_SSH_KEY }}" | sed 's/\\n/\n/g' | tr -d '\r' > ~/.ssh/ec2_key
           chmod 600 ~/.ssh/ec2_key
+          ssh-keygen -y -f ~/.ssh/ec2_key > /dev/null
           ssh-keyscan -H "${{ steps.target.outputs.host }}" >> ~/.ssh/known_hosts
 
       - name: Copy deployment files
