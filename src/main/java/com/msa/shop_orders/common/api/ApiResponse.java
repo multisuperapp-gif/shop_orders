@@ -12,4 +12,12 @@ public record ApiResponse<T>(
     public static <T> ApiResponse<T> success(String message, T data) {
         return new ApiResponse<>(true, message, null, data);
     }
+
+    public static ApiResponse<Void> success(String message) {
+        return new ApiResponse<>(true, message, null, null);
+    }
+
+    public static ApiResponse<Void> failure(String errorCode, String message) {
+        return new ApiResponse<>(false, message, errorCode, null);
+    }
 }

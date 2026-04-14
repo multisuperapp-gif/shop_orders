@@ -13,7 +13,7 @@ spring:
       hibernate:
         dialect: org.hibernate.dialect.MySQLDialect
   flyway:
-    enabled: ${FLYWAY_ENABLED:true}
+    enabled: ${FLYWAY_ENABLED:false}
     baseline-on-migrate: ${FLYWAY_BASELINE_ON_MIGRATE:true}
     url: ${FLYWAY_URL:${DB_URL:jdbc:mysql://multisuperapp1.cituis86a8r2.us-east-1.rds.amazonaws.com:3306/hyperlocal_platform}}
     user: ${FLYWAY_USER:${DB_USERNAME:admin}}
