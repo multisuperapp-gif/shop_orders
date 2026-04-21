@@ -6,6 +6,7 @@ import com.msa.shop_orders.common.exception.BusinessException;
 import com.msa.shop_orders.persistence.entity.*;
 import com.msa.shop_orders.persistence.repository.*;
 import com.msa.shop_orders.provider.shop.dto.*;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -18,6 +19,7 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
+@ConditionalOnProperty(prefix = "app.mongodb", name = "enabled", havingValue = "false", matchIfMissing = true)
 public class ShopProductServiceImpl implements ShopProductService {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {
     };
@@ -34,6 +36,7 @@ public class ShopProductServiceImpl implements ShopProductService {
     private final ProductCouponRuleRepository productCouponRuleRepository;
     private final ShopLocationRepository shopLocationRepository;
     private final ShopDeliveryRuleRepository shopDeliveryRuleRepository;
+    private final ShopProductActivityLogService shopProductActivityLogService;
     private final ObjectMapper objectMapper;
 
     public ShopProductServiceImpl(
@@ -48,6 +51,7 @@ public class ShopProductServiceImpl implements ShopProductService {
             ProductCouponRuleRepository productCouponRuleRepository,
             ShopLocationRepository shopLocationRepository,
             ShopDeliveryRuleRepository shopDeliveryRuleRepository,
+            ShopProductActivityLogService shopProductActivityLogService,
             ObjectMapper objectMapper
     ) {
         this.shopContextService = shopContextService;
@@ -61,6 +65,7 @@ public class ShopProductServiceImpl implements ShopProductService {
         this.productCouponRuleRepository = productCouponRuleRepository;
         this.shopLocationRepository = shopLocationRepository;
         this.shopDeliveryRuleRepository = shopDeliveryRuleRepository;
+        this.shopProductActivityLogService = shopProductActivityLogService;
         this.objectMapper = objectMapper;
     }
 
@@ -128,6 +133,7 @@ public class ShopProductServiceImpl implements ShopProductService {
         saveImages(productEntity.getId(), request, variantSaveResult.variantIdsByClientKey(), false);
         savePromotion(productEntity, request.promotion(), false);
         saveCoupon(productEntity, request.coupon(), false);
+        shopProductActivityLogService.productCreated(shopEntity, productEntity);
 
         Long savedProductId = productEntity.getId();
         return products(request.categoryId()).stream()
@@ -167,6 +173,7 @@ public class ShopProductServiceImpl implements ShopProductService {
         saveImages(productEntity.getId(), request, variantSaveResult.variantIdsByClientKey(), true);
         savePromotion(productEntity, request.promotion(), true);
         saveCoupon(productEntity, request.coupon(), true);
+        shopProductActivityLogService.productUpdated(shopEntity, productEntity);
 
         return products(request.categoryId()).stream()
                 .filter(product -> Objects.equals(product.productId(), productEntity.getId()))
@@ -204,6 +211,7 @@ public class ShopProductServiceImpl implements ShopProductService {
         copyImages(sourceProduct.getId(), duplicateProduct.getId(), variantIdsBySourceId);
         copyPromotion(sourceProduct.getId(), duplicateProduct);
         copyCoupon(sourceProduct.getId(), duplicateProduct);
+        shopProductActivityLogService.productDuplicated(shopEntity, sourceProduct, duplicateProduct);
 
         Long duplicatedProductId = duplicateProduct.getId();
         return products(null).stream()
@@ -237,11 +245,26 @@ public class ShopProductServiceImpl implements ShopProductService {
                 inventoryRepository.save(inventory);
             });
         }
+        shopProductActivityLogService.productStatusChanged(shopEntity, productEntity, active);
 
         return products(null).stream()
                 .filter(product -> Objects.equals(product.productId(), productEntity.getId()))
                 .findFirst()
                 .orElseThrow(() -> new BusinessException("PRODUCT_SAVE_FAILED", "Unable to load updated product status.", HttpStatus.INTERNAL_SERVER_ERROR));
+    }
+
+    @Override
+    @Transactional
+    public void removeProduct(Long productId) {
+        updateProductStatus(productId, new ShopProductStatusUpdateRequest(false));
+    }
+
+    @Override
+    public List<ShopProductActivityData> productActivity(Long productId) {
+        ShopEntity shopEntity = shopContextService.currentApprovedShop();
+        productRepository.findByIdAndShopId(productId, shopEntity.getId())
+                .orElseThrow(() -> new BusinessException("PRODUCT_NOT_FOUND", "Product not found for this shop.", HttpStatus.NOT_FOUND));
+        return shopProductActivityLogService.productActivity(shopEntity.getId(), productId);
     }
 
     private VariantSaveResult saveVariants(ProductEntity productEntity, ShopCreateProductRequest request, boolean updateMode) {

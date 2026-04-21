@@ -5,7 +5,8 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 @ConfigurationProperties(prefix = "app")
 public record ApplicationProperties(
         Security security,
-        Otp otp
+        Otp otp,
+        Mongodb mongodb
 ) {
     public record Security(
             String accessTokenSecret,
@@ -18,6 +19,11 @@ public record ApplicationProperties(
             String hardcodedValue,
             String hardcodedAadhaarOtp,
             long expirySeconds
+    ) {
+    }
+
+    public record Mongodb(
+            boolean enabled
     ) {
     }
 }

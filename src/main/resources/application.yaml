@@ -18,6 +18,13 @@ spring:
     url: ${FLYWAY_URL:${DB_URL:jdbc:mysql://multisuperapp1.cituis86a8r2.us-east-1.rds.amazonaws.com:3306/hyperlocal_platform}}
     user: ${FLYWAY_USER:${DB_USERNAME:admin}}
     password: ${FLYWAY_PASSWORD:${DB_PASSWORD:multisuperapp1}}
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://localhost:27017/shop_orders}
+      auto-index-creation: ${MONGODB_AUTO_INDEX_CREATION:true}
+    redis:
+      repositories:
+        enabled: false
 
 server:
   port: ${SERVER_PORT:8083}
@@ -31,6 +38,8 @@ app:
     hardcoded-value: ${HARDCODED_OTP:123456}
     hardcoded-aadhaar-otp: ${HARDCODED_AADHAAR_OTP:654321}
     expiry-seconds: ${OTP_EXPIRY_SECONDS:300}
+  mongodb:
+    enabled: ${MONGODB_ENABLED:false}
 
 management:
   endpoints:
