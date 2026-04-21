@@ -36,6 +36,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/v1/public/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .addFilterBefore(bearerAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)

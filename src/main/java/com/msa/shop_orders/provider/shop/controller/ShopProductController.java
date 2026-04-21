@@ -2,6 +2,7 @@ package com.msa.shop_orders.provider.shop.controller;
 
 import com.msa.shop_orders.common.api.ApiResponse;
 import com.msa.shop_orders.provider.shop.dto.ShopCreateProductRequest;
+import com.msa.shop_orders.provider.shop.dto.ShopProductActivityData;
 import com.msa.shop_orders.provider.shop.dto.ShopProductData;
 import com.msa.shop_orders.provider.shop.dto.ShopProductStatusUpdateRequest;
 import com.msa.shop_orders.provider.shop.service.ShopProductService;
@@ -39,11 +40,22 @@ public class ShopProductController {
         return ApiResponse.success("Shop product duplicated successfully.", shopProductService.duplicateProduct(productId));
     }
 
+    @GetMapping("/{productId}/activity")
+    public ApiResponse<List<ShopProductActivityData>> productActivity(@PathVariable Long productId) {
+        return ApiResponse.success(null, shopProductService.productActivity(productId));
+    }
+
     @PatchMapping("/{productId}/status")
     public ApiResponse<ShopProductData> updateProductStatus(@PathVariable Long productId, @Valid @RequestBody ShopProductStatusUpdateRequest request) {
         String message = Boolean.TRUE.equals(request.active())
                 ? "Shop product reactivated successfully."
                 : "Shop product archived successfully.";
         return ApiResponse.success(message, shopProductService.updateProductStatus(productId, request));
+    }
+
+    @DeleteMapping("/{productId}")
+    public ApiResponse<Void> removeProduct(@PathVariable Long productId) {
+        shopProductService.removeProduct(productId);
+        return ApiResponse.success("Shop product removed successfully.", null);
     }
 }
