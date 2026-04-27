@@ -1,6 +1,13 @@
 spring:
   application:
     name: shop_orders
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb+srv://multisuperapp:Multisuperapp%402026@multisuperapp.1obsrnw.mongodb.net/shop_orders?retryWrites=true&w=majority&appName=multisuperapp}
+      auto-index-creation: ${MONGODB_AUTO_INDEX_CREATION:true}
+    redis:
+      repositories:
+        enabled: false
   datasource:
     url: ${DB_URL:jdbc:mysql://multisuperapp1.cituis86a8r2.us-east-1.rds.amazonaws.com:3306/hyperlocal_platform}
     username: ${DB_USERNAME:admin}
@@ -8,7 +15,7 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: none
     properties:
       hibernate:
         dialect: org.hibernate.dialect.MySQLDialect
@@ -23,6 +30,18 @@ server:
   port: ${SERVER_PORT:8083}
 
 app:
+  storage:
+    provider: ${APP_STORAGE_PROVIDER:LOCAL}
+    local-root: ${APP_STORAGE_LOCAL_ROOT:../Auth-VerificationService/storage/local}
+    aws-region: ${AWS_REGION:us-east-1}
+    public-media:
+      bucket: ${S3_PUBLIC_MEDIA_BUCKET:msa-public-media-dev}
+    prefixes:
+      shop-products: ${S3_PREFIX_SHOP_PRODUCTS:shops/products}
+      shop-logos: ${S3_PREFIX_SHOP_LOGOS:shops/logo}
+      shop-covers: ${S3_PREFIX_SHOP_COVERS:shops/cover}
+  integrations:
+    booking-payment-url: ${BOOKING_PAYMENT_URL:http://44.217.176.56:8084}
   security:
     access-token-secret: ${ACCESS_TOKEN_SECRET:auth-verification-service-super-secret-key}
     access-token-validity-seconds: ${ACCESS_TOKEN_VALIDITY_SECONDS:86400}
@@ -31,6 +50,9 @@ app:
     hardcoded-value: ${HARDCODED_OTP:123456}
     hardcoded-aadhaar-otp: ${HARDCODED_AADHAAR_OTP:654321}
     expiry-seconds: ${OTP_EXPIRY_SECONDS:300}
+
+mongodb:
+  enabled: ${MONGODB_ENABLED:false}
 
 management:
   endpoints:

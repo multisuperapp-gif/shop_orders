@@ -2,17 +2,16 @@ package com.msa.shop_orders.provider.shop.service;
 
 import com.msa.shop_orders.common.exception.BusinessException;
 import com.msa.shop_orders.persistence.entity.ShopCategoryEntity;
-import com.msa.shop_orders.persistence.entity.ShopEntity;
 import com.msa.shop_orders.persistence.entity.ShopInventoryCategoryEntity;
 import com.msa.shop_orders.persistence.entity.ShopTypeCategoryMappingEntity;
-import com.msa.shop_orders.persistence.entity.ShopTypeEntity;
 import com.msa.shop_orders.persistence.repository.ShopCategoryRepository;
 import com.msa.shop_orders.persistence.repository.ShopInventoryCategoryRepository;
 import com.msa.shop_orders.persistence.repository.ShopTypeCategoryMappingRepository;
-import com.msa.shop_orders.persistence.repository.ShopTypeRepository;
 import com.msa.shop_orders.provider.shop.dto.ShopAvailableCategoryData;
 import com.msa.shop_orders.provider.shop.dto.ShopCategoryData;
 import com.msa.shop_orders.provider.shop.dto.ShopCreateCategoryRequest;
+import com.msa.shop_orders.provider.shop.view.ShopCategoryView;
+import com.msa.shop_orders.provider.shop.view.ShopShellView;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,20 +27,23 @@ import java.util.stream.Collectors;
 @Service
 public class ShopCategoryServiceImpl implements ShopCategoryService {
     private final ShopContextService shopContextService;
-    private final ShopTypeRepository shopTypeRepository;
+    private final ShopTypeViewService shopTypeViewService;
+    private final ShopCategoryViewService shopCategoryViewService;
     private final ShopCategoryRepository shopCategoryRepository;
     private final ShopTypeCategoryMappingRepository shopTypeCategoryMappingRepository;
     private final ShopInventoryCategoryRepository shopInventoryCategoryRepository;
 
     public ShopCategoryServiceImpl(
             ShopContextService shopContextService,
-            ShopTypeRepository shopTypeRepository,
+            ShopTypeViewService shopTypeViewService,
+            ShopCategoryViewService shopCategoryViewService,
             ShopCategoryRepository shopCategoryRepository,
             ShopTypeCategoryMappingRepository shopTypeCategoryMappingRepository,
             ShopInventoryCategoryRepository shopInventoryCategoryRepository
     ) {
         this.shopContextService = shopContextService;
-        this.shopTypeRepository = shopTypeRepository;
+        this.shopTypeViewService = shopTypeViewService;
+        this.shopCategoryViewService = shopCategoryViewService;
         this.shopCategoryRepository = shopCategoryRepository;
         this.shopTypeCategoryMappingRepository = shopTypeCategoryMappingRepository;
         this.shopInventoryCategoryRepository = shopInventoryCategoryRepository;
@@ -49,51 +51,34 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
 
     @Override
     public List<ShopAvailableCategoryData> availableCategories() {
-        ShopEntity shopEntity = shopContextService.currentApprovedShop();
-        ShopTypeEntity shopTypeEntity = requireShopType(shopEntity);
-        Set<Long> allowedCategoryIds = shopTypeCategoryMappingRepository.findByShopTypeIdAndActiveTrueOrderByIdAsc(shopTypeEntity.getId()).stream()
-                .map(ShopTypeCategoryMappingEntity::getShopCategoryId)
+        ShopShellView shopEntity = shopContextService.currentApprovedShop();
+        Long shopTypeId = requireShopTypeId(shopEntity);
+        List<ShopCategoryView> allowedCategories = shopCategoryViewService.findAllowedTypeCategories(shopTypeId);
+        Set<Long> addedCategoryIds = shopCategoryViewService.findEnabledShopCategories(shopEntity.getShopId(), shopTypeId).stream()
+                .map(ShopCategoryView::getCategoryId)
                 .collect(Collectors.toSet());
-        Set<Long> addedCategoryIds = shopInventoryCategoryRepository.findByShopIdOrderByIdAsc(shopEntity.getId()).stream()
-                .filter(ShopInventoryCategoryEntity::isEnabled)
-                .map(ShopInventoryCategoryEntity::getShopCategoryId)
-                .collect(Collectors.toSet());
-        if (allowedCategoryIds.isEmpty()) {
+        if (allowedCategories.isEmpty()) {
             return List.of();
         }
-        return shopCategoryRepository.findAllById(allowedCategoryIds).stream()
-                .filter(ShopCategoryEntity::isActive)
-                .sorted((left, right) -> left.getName().compareToIgnoreCase(right.getName()))
-                .map(category -> new ShopAvailableCategoryData(category.getId(), category.getName(), addedCategoryIds.contains(category.getId())))
+        return allowedCategories.stream()
+                .map(category -> new ShopAvailableCategoryData(category.getCategoryId(), category.getName(), addedCategoryIds.contains(category.getCategoryId())))
                 .toList();
     }
 
     @Override
     public List<ShopCategoryData> categories() {
-        ShopEntity shopEntity = shopContextService.currentApprovedShop();
-        List<ShopInventoryCategoryEntity> inventoryCategories = shopInventoryCategoryRepository.findByShopIdOrderByIdAsc(shopEntity.getId()).stream()
-                .filter(ShopInventoryCategoryEntity::isEnabled)
-                .toList();
-        if (inventoryCategories.isEmpty()) {
-            return List.of();
-        }
-        Map<Long, ShopCategoryEntity> categoriesById = shopCategoryRepository.findAllById(
-                        inventoryCategories.stream().map(ShopInventoryCategoryEntity::getShopCategoryId).toList())
-                .stream()
-                .filter(ShopCategoryEntity::isActive)
-                .collect(Collectors.toMap(ShopCategoryEntity::getId, Function.identity()));
-        return inventoryCategories.stream()
-                .map(mapping -> categoriesById.get(mapping.getShopCategoryId()))
-                .filter(Objects::nonNull)
-                .map(category -> new ShopCategoryData(category.getId(), category.getName()))
+        ShopShellView shopEntity = shopContextService.currentApprovedShop();
+        Long shopTypeId = requireShopTypeId(shopEntity);
+        return shopCategoryViewService.findEnabledShopCategories(shopEntity.getShopId(), shopTypeId).stream()
+                .map(category -> new ShopCategoryData(category.getCategoryId(), category.getName()))
                 .toList();
     }
 
     @Override
     @Transactional
     public ShopCategoryData createCategory(ShopCreateCategoryRequest request) {
-        ShopEntity shopEntity = shopContextService.currentApprovedShop();
-        ShopTypeEntity shopTypeEntity = requireShopType(shopEntity);
+        ShopShellView shopEntity = shopContextService.currentApprovedShop();
+        Long shopTypeId = requireShopTypeId(shopEntity);
         String displayName = normalizeDisplayName(request.name());
         String normalizedName = normalizeKey(displayName);
 
@@ -102,7 +87,7 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
                     ShopCategoryEntity entity = new ShopCategoryEntity();
                     entity.setName(displayName);
                     entity.setNormalizedName(normalizedName);
-                    entity.setCreatedByShopId(shopEntity.getId());
+                    entity.setCreatedByShopId(shopEntity.getShopId());
                     entity.setActive(true);
                     return shopCategoryRepository.save(entity);
                 });
@@ -113,58 +98,67 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
             categoryEntity = shopCategoryRepository.save(categoryEntity);
         }
 
-        ensureTypeMapping(shopTypeEntity.getId(), categoryEntity.getId());
-        if (shopInventoryCategoryRepository.existsByShopIdAndShopCategoryId(shopEntity.getId(), categoryEntity.getId())) {
+        ensureTypeMapping(shopTypeId, categoryEntity.getId());
+        shopCategoryViewService.syncTypeCategory(shopTypeId, categoryEntity);
+        if (shopCategoryViewService.isEnabledShopCategory(shopEntity.getShopId(), shopTypeId, categoryEntity.getId())) {
             throw new BusinessException("CATEGORY_ALREADY_ADDED", "Category is already added for this shop.", HttpStatus.BAD_REQUEST);
         }
         ShopInventoryCategoryEntity inventoryCategoryEntity = new ShopInventoryCategoryEntity();
-        inventoryCategoryEntity.setShopId(shopEntity.getId());
+        inventoryCategoryEntity.setShopId(shopEntity.getShopId());
         inventoryCategoryEntity.setShopCategoryId(categoryEntity.getId());
         inventoryCategoryEntity.setEnabled(true);
         shopInventoryCategoryRepository.save(inventoryCategoryEntity);
+        shopCategoryViewService.syncShopCategory(shopEntity.getShopId(), shopTypeId, categoryEntity, true);
         return new ShopCategoryData(categoryEntity.getId(), categoryEntity.getName());
     }
 
     @Override
     @Transactional
     public ShopCategoryData addCategory(Long categoryId) {
-        ShopEntity shopEntity = shopContextService.currentApprovedShop();
-        ShopTypeEntity shopTypeEntity = requireShopType(shopEntity);
+        ShopShellView shopEntity = shopContextService.currentApprovedShop();
+        Long shopTypeId = requireShopTypeId(shopEntity);
+        ShopCategoryView allowedCategory = shopCategoryViewService.findAllowedTypeCategory(shopTypeId, categoryId)
+                .orElseThrow(() -> new BusinessException("CATEGORY_NOT_ALLOWED", "Selected category is not allowed for this shop type.", HttpStatus.BAD_REQUEST));
         ShopCategoryEntity categoryEntity = shopCategoryRepository.findById(categoryId)
                 .filter(ShopCategoryEntity::isActive)
                 .orElseThrow(() -> new BusinessException("CATEGORY_NOT_FOUND", "Shop category not found.", HttpStatus.BAD_REQUEST));
-        if (!shopTypeCategoryMappingRepository.existsByShopTypeIdAndShopCategoryIdAndActiveTrue(shopTypeEntity.getId(), categoryId)) {
+        if (!allowedCategory.isEnabled()) {
             throw new BusinessException("CATEGORY_NOT_ALLOWED", "Selected category is not allowed for this shop type.", HttpStatus.BAD_REQUEST);
         }
-        if (shopInventoryCategoryRepository.existsByShopIdAndShopCategoryId(shopEntity.getId(), categoryId)) {
+        if (shopCategoryViewService.isEnabledShopCategory(shopEntity.getShopId(), shopTypeId, categoryId)) {
             throw new BusinessException("CATEGORY_ALREADY_ADDED", "Category is already added for this shop.", HttpStatus.BAD_REQUEST);
         }
         ShopInventoryCategoryEntity inventoryCategoryEntity = new ShopInventoryCategoryEntity();
-        inventoryCategoryEntity.setShopId(shopEntity.getId());
+        inventoryCategoryEntity.setShopId(shopEntity.getShopId());
         inventoryCategoryEntity.setShopCategoryId(categoryId);
         inventoryCategoryEntity.setEnabled(true);
         shopInventoryCategoryRepository.save(inventoryCategoryEntity);
+        shopCategoryViewService.syncShopCategory(shopEntity.getShopId(), shopTypeId, categoryEntity, true);
         return new ShopCategoryData(categoryEntity.getId(), categoryEntity.getName());
     }
 
-    private ShopTypeEntity requireShopType(ShopEntity shopEntity) {
-        ShopTypeEntity linkedShopType = shopEntity.getShopType();
-        if (linkedShopType == null || linkedShopType.getId() == null) {
+    private Long requireShopTypeId(ShopShellView shopEntity) {
+        Long shopTypeId = shopEntity.getShopTypeId();
+        if (shopTypeId == null) {
             throw new BusinessException("SHOP_TYPE_NOT_FOUND", "Approved shop type is not configured.", HttpStatus.BAD_REQUEST);
         }
-        return shopTypeRepository.findByIdAndActiveTrue(linkedShopType.getId())
-                .orElseThrow(() -> new BusinessException("SHOP_TYPE_NOT_FOUND", "Approved shop type is not configured in masters.", HttpStatus.BAD_REQUEST));
+        if (!shopTypeViewService.isActiveType(shopTypeId)) {
+            throw new BusinessException("SHOP_TYPE_NOT_FOUND", "Approved shop type is not configured in masters.", HttpStatus.BAD_REQUEST);
+        }
+        return shopTypeId;
     }
 
     private void ensureTypeMapping(Long shopTypeId, Long shopCategoryId) {
-        if (shopTypeCategoryMappingRepository.existsByShopTypeIdAndShopCategoryIdAndActiveTrue(shopTypeId, shopCategoryId)) {
+        if (shopCategoryViewService.findAllowedTypeCategory(shopTypeId, shopCategoryId).isPresent()) {
             return;
         }
         ShopTypeCategoryMappingEntity mappingEntity = new ShopTypeCategoryMappingEntity();
         mappingEntity.setShopTypeId(shopTypeId);
         mappingEntity.setShopCategoryId(shopCategoryId);
         mappingEntity.setActive(true);
-        shopTypeCategoryMappingRepository.save(mappingEntity);
+        ShopTypeCategoryMappingEntity savedMapping = shopTypeCategoryMappingRepository.save(mappingEntity);
+        shopCategoryRepository.findById(savedMapping.getShopCategoryId())
+                .ifPresent(category -> shopCategoryViewService.syncTypeCategory(savedMapping.getShopTypeId(), category));
     }
 
     private String normalizeDisplayName(String rawName) {

@@ -28,9 +28,14 @@ public class ShopEntity {
     @Column(name = "shop_name", length = 180)
     private String shopName;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "shop_type_id")
-    private ShopTypeEntity shopType;
+    @Column(name = "shop_type_id")
+    private Long shopTypeId;
+
+    @Column(name = "logo_file_id")
+    private Long logoFileId;
+
+    @Column(name = "cover_file_id")
+    private Long coverFileId;
 
     @Column(name = "license_number", length = 80)
     private String licenseNumber;

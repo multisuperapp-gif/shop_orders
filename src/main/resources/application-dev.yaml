@@ -5,9 +5,20 @@ spring:
 
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: none
     show-sql: true
 
 logging:
   level:
     root: DEBUG
+
+app:
+  storage:
+    provider: ${APP_STORAGE_PROVIDER:LOCAL}
+    aws-region: ${AWS_REGION:us-east-1}
+    public-media:
+      bucket: msa-public-media-dev
+    prefixes:
+      shop-products: shops/products
+      shop-logos: shops/logo
+      shop-covers: shops/cover

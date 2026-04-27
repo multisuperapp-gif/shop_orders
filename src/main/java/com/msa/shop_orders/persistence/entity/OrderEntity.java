@@ -34,6 +34,12 @@ public class OrderEntity {
     @Column(name = "order_status", nullable = false, length = 40)
     private String orderStatus;
 
+    @Column(name = "payment_status", nullable = false, length = 40)
+    private String paymentStatus;
+
+    @Column(name = "fulfillment_type", nullable = false, length = 30)
+    private String fulfillmentType;
+
     @Column(name = "subtotal_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal subtotalAmount;
 
@@ -45,6 +51,12 @@ public class OrderEntity {
 
     @Column(name = "platform_fee_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal platformFeeAmount;
+
+    @Column(name = "packaging_fee_amount", nullable = false, precision = 12, scale = 2)
+    private BigDecimal packagingFeeAmount;
+
+    @Column(name = "tip_amount", nullable = false, precision = 12, scale = 2)
+    private BigDecimal tipAmount;
 
     @Column(name = "discount_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal discountAmount;

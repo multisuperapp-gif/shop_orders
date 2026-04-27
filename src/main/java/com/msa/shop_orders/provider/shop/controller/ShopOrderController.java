@@ -2,9 +2,14 @@ package com.msa.shop_orders.provider.shop.controller;
 
 import com.msa.shop_orders.common.api.ApiResponse;
 import com.msa.shop_orders.provider.shop.dto.ShopOrderData;
+import com.msa.shop_orders.provider.shop.dto.ShopOrderStatusUpdateRequest;
 import com.msa.shop_orders.provider.shop.service.ShopOrderService;
+import jakarta.validation.Valid;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -29,5 +34,13 @@ public class ShopOrderController {
             @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate
     ) {
         return ApiResponse.success(null, shopOrderService.orders(dateFilter, status, fromDate, toDate));
+    }
+
+    @PatchMapping("/{orderId}/status")
+    public ApiResponse<ShopOrderData> updateStatus(
+            @PathVariable Long orderId,
+            @Valid @RequestBody ShopOrderStatusUpdateRequest request
+    ) {
+        return ApiResponse.success("Shop order status updated successfully.", shopOrderService.updateOrderStatus(orderId, request));
     }
 }

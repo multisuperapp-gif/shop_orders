@@ -8,6 +8,11 @@ import com.msa.shop_orders.security.CurrentUserService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+import software.amazon.awssdk.core.sync.RequestBody;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
@@ -27,15 +32,21 @@ import java.util.UUID;
 @Service
 public class ShopProductImageUploadServiceImpl implements ShopProductImageUploadService {
     private static final String STORAGE_PROVIDER_LOCAL = "LOCAL";
-    private static final String BUCKET_LOCAL = "local";
-    private static final Path LOCAL_ROOT = Path.of("..", "Auth-VerificationService", "storage", "local").normalize();
+    private static final String STORAGE_PROVIDER_S3 = "S3";
 
     private final FileRepository fileRepository;
     private final CurrentUserService currentUserService;
+    private final ShopMediaStorageProperties shopMediaStorageProperties;
+    private volatile S3Client s3Client;
 
-    public ShopProductImageUploadServiceImpl(FileRepository fileRepository, CurrentUserService currentUserService) {
+    public ShopProductImageUploadServiceImpl(
+            FileRepository fileRepository,
+            CurrentUserService currentUserService,
+            ShopMediaStorageProperties shopMediaStorageProperties
+    ) {
         this.fileRepository = fileRepository;
         this.currentUserService = currentUserService;
+        this.shopMediaStorageProperties = shopMediaStorageProperties;
     }
 
     @Override
@@ -77,20 +88,13 @@ public class ShopProductImageUploadServiceImpl implements ShopProductImageUpload
                 ? "product-image"
                 : file.getOriginalFilename();
         String safeName = sanitizeFilename(originalFilename);
-        String objectKey = buildObjectKey(rule.directory(), safeName);
-        Path destination = LOCAL_ROOT.resolve(objectKey);
-        try {
-            Files.createDirectories(destination.getParent());
-            try (InputStream inputStream = new ByteArrayInputStream(bytes)) {
-                Files.copy(inputStream, destination, StandardCopyOption.REPLACE_EXISTING);
-            }
-        } catch (IOException exception) {
-            throw new BusinessException("FILE_STORE_FAILED", "Unable to store image file.", HttpStatus.INTERNAL_SERVER_ERROR);
-        }
+        String objectKey = buildObjectKey(rule.objectKeyPrefix(shopMediaStorageProperties), safeName);
+        String storageProvider = useS3() ? STORAGE_PROVIDER_S3 : STORAGE_PROVIDER_LOCAL;
+        storeBytes(shopMediaStorageProperties.getPublicMedia().getBucket(), objectKey, bytes, mimeType, storageProvider);
 
         FileEntity entity = new FileEntity();
-        entity.setStorageProvider(STORAGE_PROVIDER_LOCAL);
-        entity.setBucketName(BUCKET_LOCAL);
+        entity.setStorageProvider(storageProvider);
+        entity.setBucketName(shopMediaStorageProperties.getPublicMedia().getBucket());
         entity.setObjectKey(objectKey);
         entity.setMimeType(mimeType.isBlank() ? "application/octet-stream" : mimeType);
         entity.setFileSizeBytes(bytes.length);
@@ -117,6 +121,55 @@ public class ShopProductImageUploadServiceImpl implements ShopProductImageUpload
         return "%s/%d/%02d/%s_%s".formatted(directory, today.getYear(), today.getMonthValue(), random, safeName);
     }
 
+    private Path resolveLocalRoot() {
+        return Path.of(shopMediaStorageProperties.getLocalRoot()).normalize();
+    }
+
+    private boolean useS3() {
+        return STORAGE_PROVIDER_S3.equalsIgnoreCase(shopMediaStorageProperties.getProvider());
+    }
+
+    private void storeBytes(String bucketName, String objectKey, byte[] bytes, String mimeType, String storageProvider) {
+        if (STORAGE_PROVIDER_S3.equalsIgnoreCase(storageProvider)) {
+            try {
+                s3Client().putObject(
+                        PutObjectRequest.builder()
+                                .bucket(bucketName)
+                                .key(objectKey)
+                                .contentType(mimeType)
+                                .build(),
+                        RequestBody.fromBytes(bytes)
+                );
+            } catch (RuntimeException exception) {
+                throw new BusinessException("FILE_STORE_FAILED", "Unable to upload image file to S3.", HttpStatus.INTERNAL_SERVER_ERROR);
+            }
+            return;
+        }
+        Path destination = resolveLocalRoot().resolve(bucketName).resolve(objectKey);
+        try {
+            Files.createDirectories(destination.getParent());
+            Files.write(destination, bytes);
+        } catch (IOException exception) {
+            throw new BusinessException("FILE_STORE_FAILED", "Unable to store image file.", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private S3Client s3Client() {
+        S3Client existing = s3Client;
+        if (existing != null) {
+            return existing;
+        }
+        synchronized (this) {
+            if (s3Client == null) {
+                s3Client = S3Client.builder()
+                        .region(Region.of(shopMediaStorageProperties.getAwsRegion()))
+                        .credentialsProvider(DefaultCredentialsProvider.create())
+                        .build();
+            }
+            return s3Client;
+        }
+    }
+
     private String sanitizeFilename(String filename) {
         String normalized = filename.trim().toLowerCase(Locale.ROOT);
         normalized = normalized.replace("\\", "_").replace("/", "_");
@@ -137,21 +190,19 @@ public class ShopProductImageUploadServiceImpl implements ShopProductImageUpload
     }
 
     private enum ImageAssetRule {
-        PRODUCT_ITEM("PRODUCT_ITEM", "product-item", 4, 5, 1200, 1500, 5 * 1024 * 1024L),
-        SHOP_LOGO("SHOP_LOGO", "shop-logo", 1, 1, 800, 800, 2 * 1024 * 1024L),
-        SHOP_COVER("SHOP_COVER", "shop-cover", 16, 9, 1600, 900, 8 * 1024 * 1024L);
+        PRODUCT_ITEM("PRODUCT_ITEM", 4, 5, 1200, 1500, 5 * 1024 * 1024L),
+        SHOP_LOGO("SHOP_LOGO", 1, 1, 800, 800, 2 * 1024 * 1024L),
+        SHOP_COVER("SHOP_COVER", 16, 9, 1600, 900, 8 * 1024 * 1024L);
 
         private final String apiValue;
-        private final String directory;
         private final int ratioWidth;
         private final int ratioHeight;
         private final int minWidth;
         private final int minHeight;
         private final long maxBytes;
 
-        ImageAssetRule(String apiValue, String directory, int ratioWidth, int ratioHeight, int minWidth, int minHeight, long maxBytes) {
+        ImageAssetRule(String apiValue, int ratioWidth, int ratioHeight, int minWidth, int minHeight, long maxBytes) {
             this.apiValue = apiValue;
-            this.directory = directory;
             this.ratioWidth = ratioWidth;
             this.ratioHeight = ratioHeight;
             this.minWidth = minWidth;
@@ -198,7 +249,15 @@ public class ShopProductImageUploadServiceImpl implements ShopProductImageUpload
         }
 
         public String directory() {
-            return directory;
+            return apiValue.toLowerCase(Locale.ROOT);
+        }
+
+        public String objectKeyPrefix(ShopMediaStorageProperties properties) {
+            return switch (this) {
+                case PRODUCT_ITEM -> properties.getPrefixes().getShopProducts();
+                case SHOP_LOGO -> properties.getPrefixes().getShopLogos();
+                case SHOP_COVER -> properties.getPrefixes().getShopCovers();
+            };
         }
 
         public int ratioWidth() {
