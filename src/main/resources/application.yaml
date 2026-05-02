@@ -55,6 +55,9 @@ mongodb:
   enabled: ${MONGODB_ENABLED:false}
 
 management:
+  health:
+    redis:
+      enabled: ${REDIS_HEALTH_ENABLED:false}
   endpoints:
     web:
       exposure:
