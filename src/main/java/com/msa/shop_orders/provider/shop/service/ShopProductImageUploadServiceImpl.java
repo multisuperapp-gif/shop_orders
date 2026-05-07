@@ -191,7 +191,7 @@ public class ShopProductImageUploadServiceImpl implements ShopProductImageUpload
 
     private enum ImageAssetRule {
         PRODUCT_ITEM("PRODUCT_ITEM", 4, 5, 1200, 1500, 5 * 1024 * 1024L),
-        SHOP_LOGO("SHOP_LOGO", 1, 1, 800, 800, 2 * 1024 * 1024L),
+        SHOP_LOGO("SHOP_LOGO", 1, 1, 800, 800, 8 * 1024 * 1024L),
         SHOP_COVER("SHOP_COVER", 16, 9, 1600, 900, 8 * 1024 * 1024L);
 
         private final String apiValue;

@@ -1,6 +1,10 @@
 spring:
   application:
     name: shop_orders
+  servlet:
+    multipart:
+      max-file-size: ${SPRING_MULTIPART_MAX_FILE_SIZE:10MB}
+      max-request-size: ${SPRING_MULTIPART_MAX_REQUEST_SIZE:12MB}
   data:
     mongodb:
       uri: ${MONGODB_URI:mongodb+srv://multisuperapp:Multisuperapp%402026@multisuperapp.1obsrnw.mongodb.net/shop_orders?retryWrites=true&w=majority&appName=multisuperapp}
