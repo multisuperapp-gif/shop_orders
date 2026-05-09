@@ -35,11 +35,11 @@ app:
     local-root: ${APP_STORAGE_LOCAL_ROOT:../Auth-VerificationService/storage/local}
     aws-region: ${AWS_REGION:us-east-1}
     public-media:
-      bucket: ${S3_PUBLIC_MEDIA_BUCKET:msa-public-media-dev}
+      bucket: ${S3_PUBLIC_MEDIA_BUCKET:multisuperapp-bucket}
     prefixes:
-      shop-products: ${S3_PREFIX_SHOP_PRODUCTS:shops/products}
-      shop-logos: ${S3_PREFIX_SHOP_LOGOS:shops/logo}
-      shop-covers: ${S3_PREFIX_SHOP_COVERS:shops/cover}
+      shop-products: ${S3_PREFIX_SHOP_PRODUCTS:msa-public-media-dev/shops/products}
+      shop-logos: ${S3_PREFIX_SHOP_LOGOS:msa-public-media-dev/shops/logo}
+      shop-covers: ${S3_PREFIX_SHOP_COVERS:msa-public-media-dev/shops/cover}
   integrations:
     booking-payment-url: ${BOOKING_PAYMENT_URL:http://44.217.176.56:8084}
   security:
