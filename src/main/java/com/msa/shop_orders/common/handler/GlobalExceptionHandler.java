@@ -27,7 +27,12 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ApiResponse<Void>> handleBusinessException(BusinessException exception) {
-        LOGGER.warn("Business exception raised: errorCode={}, status={}, message={}", exception.getErrorCode(), exception.getHttpStatus(), exception.getMessage());
+        LOGGER.error(
+                "Business exception raised: errorCode={}, status={}, message={}",
+                exception.getErrorCode(),
+                exception.getHttpStatus(),
+                exception.getMessage()
+        );
         return ResponseEntity.status(exception.getHttpStatus())
                 .body(ApiResponse.failure(exception.getErrorCode(), exception.getMessage()));
     }
@@ -44,7 +49,7 @@ public class GlobalExceptionHandler {
         response.put("error_code", "VALIDATION_ERROR");
         response.put("message", "Request validation failed");
         response.put("errors", validationErrors);
-        LOGGER.warn("Validation failed with {} field errors", validationErrors.size());
+        LOGGER.error("Validation failed with {} field errors: {}", validationErrors.size(), validationErrors);
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(response);
     }
 

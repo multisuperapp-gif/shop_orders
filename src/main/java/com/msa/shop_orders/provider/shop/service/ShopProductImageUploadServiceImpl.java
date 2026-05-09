@@ -5,6 +5,8 @@ import com.msa.shop_orders.persistence.entity.FileEntity;
 import com.msa.shop_orders.persistence.repository.FileRepository;
 import com.msa.shop_orders.provider.shop.dto.ShopImageUploadData;
 import com.msa.shop_orders.security.CurrentUserService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -31,6 +33,7 @@ import java.util.UUID;
 
 @Service
 public class ShopProductImageUploadServiceImpl implements ShopProductImageUploadService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ShopProductImageUploadServiceImpl.class);
     private static final String STORAGE_PROVIDER_LOCAL = "LOCAL";
     private static final String STORAGE_PROVIDER_S3 = "S3";
 
@@ -185,6 +188,7 @@ public class ShopProductImageUploadServiceImpl implements ShopProductImageUpload
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             return HexFormat.of().formatHex(digest.digest(bytes));
         } catch (NoSuchAlgorithmException exception) {
+            LOGGER.error("SHA-256 algorithm not available while hashing image bytes", exception);
             throw new IllegalStateException("SHA-256 algorithm not available", exception);
         }
     }

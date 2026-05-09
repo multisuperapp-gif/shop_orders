@@ -34,6 +34,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.ThreadLocalRandom;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,6 +43,7 @@ import org.springframework.util.StringUtils;
 
 @Service
 public class ConsumerCartService {
+    private static final Logger LOGGER = LoggerFactory.getLogger(ConsumerCartService.class);
     private static final String DEFAULT_CURRENCY = "INR";
 
     private final ConsumerCartViewRepository consumerCartViewRepository;
@@ -334,6 +337,7 @@ public class ConsumerCartService {
             }
             return hex.toString();
         } catch (NoSuchAlgorithmException exception) {
+            LOGGER.error("SHA-256 is not available while building cart line key", exception);
             throw new IllegalStateException("SHA-256 is not available", exception);
         }
     }
