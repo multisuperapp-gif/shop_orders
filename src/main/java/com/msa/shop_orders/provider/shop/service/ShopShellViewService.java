@@ -29,16 +29,24 @@ public class ShopShellViewService {
         if (ownerUserId == null) {
             return Optional.empty();
         }
-        return shopRepository.findFirstByOwnerUserIdOrderByIdDesc(ownerUserId)
+        Optional<ShopShellView> sqlView = shopRepository.findFirstByOwnerUserIdOrderByIdDesc(ownerUserId)
                 .map(this::toShellView);
+        if (sqlView.isPresent() || !viewStoreEnabled) {
+            return sqlView;
+        }
+        return shopShellViewRepository.findFirstByOwnerUserId(ownerUserId);
     }
 
     public Optional<ShopShellView> findByShopId(Long shopId) {
         if (shopId == null) {
             return Optional.empty();
         }
-        return shopRepository.findById(shopId)
+        Optional<ShopShellView> sqlView = shopRepository.findById(shopId)
                 .map(this::toShellView);
+        if (sqlView.isPresent() || !viewStoreEnabled) {
+            return sqlView;
+        }
+        return shopShellViewRepository.findById(shopId);
     }
 
     public void syncShellView(ShopShellView document) {
