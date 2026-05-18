@@ -166,7 +166,11 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
         if (normalized.isBlank()) {
             throw new BusinessException("CATEGORY_NAME_REQUIRED", "Category name is required.", HttpStatus.BAD_REQUEST);
         }
-        return normalized;
+        return java.util.Arrays.stream(normalized.split(" "))
+                .filter(part -> !part.isBlank())
+                .map(part -> part.substring(0, 1).toUpperCase(Locale.ROOT)
+                        + part.substring(1).toLowerCase(Locale.ROOT))
+                .collect(Collectors.joining(" "));
     }
 
     private String normalizeKey(String value) {
