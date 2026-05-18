@@ -782,7 +782,7 @@ public class ShopRuntimeViewService {
         if (categoryIds.isEmpty()) {
             return Map.of();
         }
-        return shopCategoryViewService.findEnabledShopCategories(shopEntity.getShopId(), shopEntity.getShopTypeId()).stream()
+        return shopCategoryViewService.findShopCategories(shopEntity.getShopId(), shopEntity.getShopTypeId()).stream()
                 .filter(category -> categoryIds.contains(category.getCategoryId()))
                 .collect(Collectors.toMap(ShopCategoryView::getCategoryId, Function.identity(), (left, right) -> left));
     }

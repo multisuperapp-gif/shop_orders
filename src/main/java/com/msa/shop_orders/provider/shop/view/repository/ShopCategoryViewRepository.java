@@ -7,6 +7,7 @@ import org.springframework.data.mongodb.repository.MongoRepository;
 public interface ShopCategoryViewRepository extends MongoRepository<ShopCategoryView, String> {
     List<ShopCategoryView> findByShopTypeIdAndShopIdIsNullAndEnabledTrue(Long shopTypeId);
     long countByShopTypeIdAndShopIdIsNull(Long shopTypeId);
+    List<ShopCategoryView> findByShopId(Long shopId);
     List<ShopCategoryView> findByShopIdAndEnabledTrue(Long shopId);
     long countByShopId(Long shopId);
 }

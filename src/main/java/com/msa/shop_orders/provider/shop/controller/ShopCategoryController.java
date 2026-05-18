@@ -4,6 +4,7 @@ import com.msa.shop_orders.common.api.ApiResponse;
 import com.msa.shop_orders.provider.shop.dto.ShopAvailableCategoryData;
 import com.msa.shop_orders.provider.shop.dto.ShopCategoryData;
 import com.msa.shop_orders.provider.shop.dto.ShopCreateCategoryRequest;
+import com.msa.shop_orders.provider.shop.dto.ShopCategoryStatusUpdateRequest;
 import com.msa.shop_orders.provider.shop.service.ShopCategoryService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
@@ -37,5 +38,16 @@ public class ShopCategoryController {
     @PostMapping("/{categoryId}/add")
     public ApiResponse<ShopCategoryData> addCategory(@PathVariable Long categoryId) {
         return ApiResponse.success("Shop category added successfully.", shopCategoryService.addCategory(categoryId));
+    }
+
+    @PatchMapping("/{categoryId}/status")
+    public ApiResponse<ShopCategoryData> updateCategoryStatus(
+            @PathVariable Long categoryId,
+            @Valid @RequestBody ShopCategoryStatusUpdateRequest request
+    ) {
+        String message = Boolean.TRUE.equals(request.enabled())
+                ? "Shop category enabled successfully."
+                : "Shop category disabled successfully.";
+        return ApiResponse.success(message, shopCategoryService.updateCategoryStatus(categoryId, request));
     }
 }

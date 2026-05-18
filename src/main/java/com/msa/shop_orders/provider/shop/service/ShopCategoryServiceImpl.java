@@ -10,6 +10,7 @@ import com.msa.shop_orders.persistence.repository.ShopTypeCategoryMappingReposit
 import com.msa.shop_orders.provider.shop.dto.ShopAvailableCategoryData;
 import com.msa.shop_orders.provider.shop.dto.ShopCategoryData;
 import com.msa.shop_orders.provider.shop.dto.ShopCreateCategoryRequest;
+import com.msa.shop_orders.provider.shop.dto.ShopCategoryStatusUpdateRequest;
 import com.msa.shop_orders.provider.shop.view.ShopCategoryView;
 import com.msa.shop_orders.provider.shop.view.ShopShellView;
 import org.springframework.http.HttpStatus;
@@ -18,10 +19,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @Service
@@ -54,7 +52,7 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
         ShopShellView shopEntity = shopContextService.currentApprovedShop();
         Long shopTypeId = requireShopTypeId(shopEntity);
         List<ShopCategoryView> allowedCategories = shopCategoryViewService.findAllowedTypeCategories(shopTypeId);
-        Set<Long> addedCategoryIds = shopCategoryViewService.findEnabledShopCategories(shopEntity.getShopId(), shopTypeId).stream()
+        Set<Long> addedCategoryIds = shopCategoryViewService.findShopCategories(shopEntity.getShopId(), shopTypeId).stream()
                 .map(ShopCategoryView::getCategoryId)
                 .collect(Collectors.toSet());
         if (allowedCategories.isEmpty()) {
@@ -69,8 +67,8 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
     public List<ShopCategoryData> categories() {
         ShopShellView shopEntity = shopContextService.currentApprovedShop();
         Long shopTypeId = requireShopTypeId(shopEntity);
-        return shopCategoryViewService.findEnabledShopCategories(shopEntity.getShopId(), shopTypeId).stream()
-                .map(category -> new ShopCategoryData(category.getCategoryId(), category.getName()))
+        return shopCategoryViewService.findShopCategories(shopEntity.getShopId(), shopTypeId).stream()
+                .map(category -> new ShopCategoryData(category.getCategoryId(), category.getName(), category.isEnabled()))
                 .toList();
     }
 
@@ -100,7 +98,7 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
 
         ensureTypeMapping(shopTypeId, categoryEntity.getId());
         shopCategoryViewService.syncTypeCategory(shopTypeId, categoryEntity);
-        if (shopCategoryViewService.isEnabledShopCategory(shopEntity.getShopId(), shopTypeId, categoryEntity.getId())) {
+        if (shopCategoryViewService.findShopCategory(shopEntity.getShopId(), shopTypeId, categoryEntity.getId()).isPresent()) {
             throw new BusinessException("CATEGORY_ALREADY_ADDED", "Category is already added for this shop.", HttpStatus.BAD_REQUEST);
         }
         ShopInventoryCategoryEntity inventoryCategoryEntity = new ShopInventoryCategoryEntity();
@@ -109,7 +107,7 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
         inventoryCategoryEntity.setEnabled(true);
         shopInventoryCategoryRepository.save(inventoryCategoryEntity);
         shopCategoryViewService.syncShopCategory(shopEntity.getShopId(), shopTypeId, categoryEntity, true);
-        return new ShopCategoryData(categoryEntity.getId(), categoryEntity.getName());
+        return new ShopCategoryData(categoryEntity.getId(), categoryEntity.getName(), true);
     }
 
     @Override
@@ -125,7 +123,7 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
         if (!allowedCategory.isEnabled()) {
             throw new BusinessException("CATEGORY_NOT_ALLOWED", "Selected category is not allowed for this shop type.", HttpStatus.BAD_REQUEST);
         }
-        if (shopCategoryViewService.isEnabledShopCategory(shopEntity.getShopId(), shopTypeId, categoryId)) {
+        if (shopCategoryViewService.findShopCategory(shopEntity.getShopId(), shopTypeId, categoryId).isPresent()) {
             throw new BusinessException("CATEGORY_ALREADY_ADDED", "Category is already added for this shop.", HttpStatus.BAD_REQUEST);
         }
         ShopInventoryCategoryEntity inventoryCategoryEntity = new ShopInventoryCategoryEntity();
@@ -134,7 +132,25 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
         inventoryCategoryEntity.setEnabled(true);
         shopInventoryCategoryRepository.save(inventoryCategoryEntity);
         shopCategoryViewService.syncShopCategory(shopEntity.getShopId(), shopTypeId, categoryEntity, true);
-        return new ShopCategoryData(categoryEntity.getId(), categoryEntity.getName());
+        return new ShopCategoryData(categoryEntity.getId(), categoryEntity.getName(), true);
+    }
+
+    @Override
+    @Transactional
+    public ShopCategoryData updateCategoryStatus(Long categoryId, ShopCategoryStatusUpdateRequest request) {
+        ShopShellView shopEntity = shopContextService.currentApprovedShop();
+        Long shopTypeId = requireShopTypeId(shopEntity);
+        ShopInventoryCategoryEntity inventoryCategoryEntity = shopInventoryCategoryRepository
+                .findByShopIdAndShopCategoryId(shopEntity.getShopId(), categoryId)
+                .orElseThrow(() -> new BusinessException("CATEGORY_NOT_FOUND", "Shop category not found.", HttpStatus.BAD_REQUEST));
+        ShopCategoryEntity categoryEntity = shopCategoryRepository.findById(categoryId)
+                .filter(ShopCategoryEntity::isActive)
+                .orElseThrow(() -> new BusinessException("CATEGORY_NOT_FOUND", "Shop category not found.", HttpStatus.BAD_REQUEST));
+        boolean nextEnabled = Boolean.TRUE.equals(request.enabled());
+        inventoryCategoryEntity.setEnabled(nextEnabled);
+        shopInventoryCategoryRepository.save(inventoryCategoryEntity);
+        shopCategoryViewService.syncShopCategory(shopEntity.getShopId(), shopTypeId, categoryEntity, nextEnabled);
+        return new ShopCategoryData(categoryEntity.getId(), categoryEntity.getName(), nextEnabled);
     }
 
     private Long requireShopTypeId(ShopShellView shopEntity) {

@@ -55,6 +55,12 @@ public class ShopCategoryViewService {
     }
 
     public List<ShopCategoryView> findEnabledShopCategories(Long shopId, Long shopTypeId) {
+        return findShopCategories(shopId, shopTypeId).stream()
+                .filter(ShopCategoryView::isEnabled)
+                .toList();
+    }
+
+    public List<ShopCategoryView> findShopCategories(Long shopId, Long shopTypeId) {
         if (shopId == null) {
             return List.of();
         }
@@ -62,7 +68,7 @@ public class ShopCategoryViewService {
             return loadShopCategoriesFromSql(shopId, shopTypeId);
         }
         ensureShopCategoriesSeeded(shopId, shopTypeId);
-        return shopCategoryViewRepository.findByShopIdAndEnabledTrue(shopId).stream()
+        return shopCategoryViewRepository.findByShopId(shopId).stream()
                 .sorted(categoryComparator())
                 .toList();
     }
@@ -72,6 +78,15 @@ public class ShopCategoryViewService {
             return Optional.empty();
         }
         return findEnabledShopCategories(shopId, shopTypeId).stream()
+                .filter(item -> categoryId.equals(item.getCategoryId()))
+                .findFirst();
+    }
+
+    public Optional<ShopCategoryView> findShopCategory(Long shopId, Long shopTypeId, Long categoryId) {
+        if (categoryId == null) {
+            return Optional.empty();
+        }
+        return findShopCategories(shopId, shopTypeId).stream()
                 .filter(item -> categoryId.equals(item.getCategoryId()))
                 .findFirst();
     }
@@ -142,9 +157,7 @@ public class ShopCategoryViewService {
     }
 
     private List<ShopCategoryView> loadShopCategoriesFromSql(Long shopId, Long shopTypeId) {
-        List<ShopInventoryCategoryEntity> mappings = shopInventoryCategoryRepository.findByShopIdOrderByIdAsc(shopId).stream()
-                .filter(ShopInventoryCategoryEntity::isEnabled)
-                .toList();
+        List<ShopInventoryCategoryEntity> mappings = shopInventoryCategoryRepository.findByShopIdOrderByIdAsc(shopId);
         if (mappings.isEmpty()) {
             return List.of();
         }
@@ -154,9 +167,16 @@ public class ShopCategoryViewService {
                 .filter(ShopCategoryEntity::isActive)
                 .collect(Collectors.toMap(ShopCategoryEntity::getId, Function.identity()));
         return mappings.stream()
-                .map(mapping -> categoriesById.get(mapping.getShopCategoryId()))
+                .map(mapping -> {
+                    ShopCategoryEntity category = categoriesById.get(mapping.getShopCategoryId());
+                    if (category == null) {
+                        return null;
+                    }
+                    ShopCategoryView document = toShopDocument(shopId, shopTypeId, category);
+                    document.setEnabled(mapping.isEnabled());
+                    return document;
+                })
                 .filter(java.util.Objects::nonNull)
-                .map(category -> toShopDocument(shopId, shopTypeId, category))
                 .sorted(categoryComparator())
                 .toList();
     }
