@@ -40,6 +40,9 @@ public class ShopEntity {
     @Column(name = "license_number", length = 80)
     private String licenseNumber;
 
+    @Column(name = "restaurant_service_type", length = 40)
+    private String restaurantServiceType;
+
     @Column(name = "approval_status", nullable = false, length = 120)
     private String approvalStatus;
 

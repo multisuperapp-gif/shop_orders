@@ -29,7 +29,12 @@ public class ShopShellViewService {
         if (ownerUserId == null) {
             return Optional.empty();
         }
-        Optional<ShopShellView> sqlView = shopRepository.findFirstByOwnerUserIdOrderByIdDesc(ownerUserId)
+        Optional<ShopShellView> sqlView = shopRepository
+                .findFirstByOwnerUserIdAndApprovalStatusIgnoreCaseOrderByIdDesc(
+                        ownerUserId,
+                        "APPROVED"
+                )
+                .or(() -> shopRepository.findFirstByOwnerUserIdOrderByIdDesc(ownerUserId))
                 .map(this::toShellView);
         if (sqlView.isPresent() || !viewStoreEnabled) {
             return sqlView;
@@ -66,6 +71,7 @@ public class ShopShellViewService {
         shell.setShopTypeId(shop.getShopTypeId());
         shell.setLogoFileId(shop.getLogoFileId());
         shell.setCoverFileId(shop.getCoverFileId());
+        shell.setRestaurantServiceType(shop.getRestaurantServiceType());
         shell.setApprovalStatus(shop.getApprovalStatus());
         shell.setOperationalStatus(shop.getOperationalStatus());
         shell.setAvgRating(shop.getAvgRating() == null ? BigDecimal.ZERO : shop.getAvgRating());

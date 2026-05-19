@@ -7,4 +7,9 @@ import java.util.Optional;
 
 public interface ShopRepository extends JpaRepository<ShopEntity, Long> {
     Optional<ShopEntity> findFirstByOwnerUserIdOrderByIdDesc(Long ownerUserId);
+
+    Optional<ShopEntity> findFirstByOwnerUserIdAndApprovalStatusIgnoreCaseOrderByIdDesc(
+            Long ownerUserId,
+            String approvalStatus
+    );
 }

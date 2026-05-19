@@ -42,6 +42,7 @@ public class ShopShellWriteService {
         shell.setShopTypeId(shop.getShopTypeId());
         shell.setLogoFileId(shop.getLogoFileId());
         shell.setCoverFileId(shop.getCoverFileId());
+        shell.setRestaurantServiceType(shop.getRestaurantServiceType());
         shell.setApprovalStatus(shop.getApprovalStatus());
         shell.setOperationalStatus(shop.getOperationalStatus());
         shell.setAvgRating(shop.getAvgRating());

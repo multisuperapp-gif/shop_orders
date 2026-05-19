@@ -363,7 +363,9 @@ public class StorefrontCatalogService {
                 row.getInventoryStatus(),
                 Boolean.TRUE.equals(row.getOutOfStock()),
                 row.getPromotionScore() == null ? 0 : row.getPromotionScore(),
-                row.getImageObjectKey()
+                row.getImageObjectKey(),
+                row.getAttributesJson(),
+                row.getFoodPreference()
         );
     }
 
@@ -387,7 +389,11 @@ public class StorefrontCatalogService {
                 Boolean.TRUE.equals(row.getOpenNow()),
                 Boolean.TRUE.equals(row.getClosingSoon()),
                 Boolean.TRUE.equals(row.getAcceptsOrders()),
-                row.getClosesAt()
+                row.getClosesAt(),
+                row.getRestaurantServiceType(),
+                Boolean.TRUE.equals(row.getServesVeg()),
+                Boolean.TRUE.equals(row.getServesNonVeg()),
+                Boolean.TRUE.equals(row.getServesEgg())
         );
     }
 

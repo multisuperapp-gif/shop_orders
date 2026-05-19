@@ -120,7 +120,9 @@ public final class StorefrontDtos {
             String inventoryStatus,
             boolean outOfStock,
             int promotionScore,
-            String imageObjectKey
+            String imageObjectKey,
+            String attributesJson,
+            String foodPreference
     ) {
     }
 
@@ -150,7 +152,11 @@ public final class StorefrontDtos {
             boolean openNow,
             boolean closingSoon,
             boolean acceptsOrders,
-            String closesAt
+            String closesAt,
+            String restaurantServiceType,
+            boolean servesVeg,
+            boolean servesNonVeg,
+            boolean servesEgg
     ) {
     }
 

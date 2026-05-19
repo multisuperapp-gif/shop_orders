@@ -15,6 +15,7 @@ public class ShopShellView {
     private Long shopTypeId;
     private Long logoFileId;
     private Long coverFileId;
+    private String restaurantServiceType;
     private String approvalStatus;
     private String operationalStatus;
     private BigDecimal avgRating;
@@ -82,6 +83,14 @@ public class ShopShellView {
 
     public void setCoverFileId(Long coverFileId) {
         this.coverFileId = coverFileId;
+    }
+
+    public String getRestaurantServiceType() {
+        return restaurantServiceType;
+    }
+
+    public void setRestaurantServiceType(String restaurantServiceType) {
+        this.restaurantServiceType = restaurantServiceType;
     }
 
     public String getApprovalStatus() {

@@ -55,6 +55,8 @@ public interface StorefrontCatalogRepository extends Repository<ShopEntity, Long
         Boolean getOutOfStock();
         Integer getPromotionScore();
         String getImageObjectKey();
+        String getAttributesJson();
+        String getFoodPreference();
     }
 
     interface ShopSummaryView {
@@ -77,6 +79,10 @@ public interface StorefrontCatalogRepository extends Repository<ShopEntity, Long
         Boolean getClosingSoon();
         Boolean getAcceptsOrders();
         String getClosesAt();
+        String getRestaurantServiceType();
+        Boolean getServesVeg();
+        Boolean getServesNonVeg();
+        Boolean getServesEgg();
     }
 
     interface ProductBaseView {
@@ -229,7 +235,9 @@ public interface StorefrontCatalogRepository extends Repository<ShopEntity, Long
                       AND pp.status = 'ACTIVE'
                       AND CURRENT_TIMESTAMP BETWEEN pp.starts_at AND pp.ends_at
                 ), 0) AS promotionScore,
-                image_file.object_key AS imageObjectKey
+                image_file.object_key AS imageObjectKey,
+                CAST(p.attributes_json AS CHAR) AS attributesJson,
+                JSON_UNQUOTE(JSON_EXTRACT(p.attributes_json, '$.foodPreference')) AS foodPreference
             FROM products p
             INNER JOIN shops s ON s.id = p.shop_id
             INNER JOIN shop_categories sc ON sc.id = p.shop_category_id
@@ -305,7 +313,82 @@ public interface StorefrontCatalogRepository extends Repository<ShopEntity, Long
                     THEN 1
                     ELSE 0
                 END AS acceptsOrders,
-                DATE_FORMAT(soh.close_time, '%H:%i') AS closesAt
+                DATE_FORMAT(soh.close_time, '%H:%i') AS closesAt,
+                COALESCE(
+                    NULLIF(TRIM(s.restaurant_service_type), ''),
+                    CASE
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM products rp
+                            WHERE rp.shop_id = s.id
+                              AND rp.is_active = 1
+                              AND JSON_UNQUOTE(JSON_EXTRACT(rp.attributes_json, '$.foodPreference')) = 'VEG'
+                        ) = 1
+                         AND EXISTS (
+                            SELECT 1
+                            FROM products rp
+                            WHERE rp.shop_id = s.id
+                              AND rp.is_active = 1
+                              AND JSON_UNQUOTE(JSON_EXTRACT(rp.attributes_json, '$.foodPreference')) IN ('NON_VEG', 'EGG')
+                        ) = 0
+                        THEN 'PURE_VEG'
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM products rp
+                            WHERE rp.shop_id = s.id
+                              AND rp.is_active = 1
+                              AND JSON_UNQUOTE(JSON_EXTRACT(rp.attributes_json, '$.foodPreference')) = 'VEG'
+                        ) = 1
+                        THEN 'VEG_NON_VEG'
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM products rp
+                            WHERE rp.shop_id = s.id
+                              AND rp.is_active = 1
+                              AND JSON_UNQUOTE(JSON_EXTRACT(rp.attributes_json, '$.foodPreference')) IN ('NON_VEG', 'EGG')
+                        ) = 1
+                        THEN 'PURE_NON_VEG'
+                        ELSE 'NOT_SET'
+                    END
+                ) AS restaurantServiceType,
+                CASE
+                    WHEN COALESCE(NULLIF(TRIM(s.restaurant_service_type), ''), 'NOT_SET') IN ('PURE_VEG', 'VEG_NON_VEG')
+                    THEN 1
+                    WHEN COALESCE(NULLIF(TRIM(s.restaurant_service_type), ''), '') = 'PURE_NON_VEG'
+                    THEN 0
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM products rp
+                        WHERE rp.shop_id = s.id
+                          AND rp.is_active = 1
+                          AND JSON_UNQUOTE(JSON_EXTRACT(rp.attributes_json, '$.foodPreference')) = 'VEG'
+                    )
+                    THEN 1 ELSE 0
+                END AS servesVeg,
+                CASE
+                    WHEN COALESCE(NULLIF(TRIM(s.restaurant_service_type), ''), '') IN ('VEG_NON_VEG', 'PURE_NON_VEG')
+                    THEN 1
+                    WHEN COALESCE(NULLIF(TRIM(s.restaurant_service_type), ''), '') = 'PURE_VEG'
+                    THEN 0
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM products rp
+                        WHERE rp.shop_id = s.id
+                          AND rp.is_active = 1
+                          AND JSON_UNQUOTE(JSON_EXTRACT(rp.attributes_json, '$.foodPreference')) = 'NON_VEG'
+                    )
+                    THEN 1 ELSE 0
+                END AS servesNonVeg,
+                CASE
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM products rp
+                        WHERE rp.shop_id = s.id
+                          AND rp.is_active = 1
+                          AND JSON_UNQUOTE(JSON_EXTRACT(rp.attributes_json, '$.foodPreference')) = 'EGG'
+                    )
+                    THEN 1 ELSE 0
+                END AS servesEgg
             FROM shops s
             LEFT JOIN files logo_file ON logo_file.id = s.logo_file_id
             LEFT JOIN files cover_file ON cover_file.id = s.cover_file_id
@@ -398,7 +481,82 @@ public interface StorefrontCatalogRepository extends Repository<ShopEntity, Long
                     THEN 1
                     ELSE 0
                 END AS acceptsOrders,
-                DATE_FORMAT(soh.close_time, '%H:%i') AS closesAt
+                DATE_FORMAT(soh.close_time, '%H:%i') AS closesAt,
+                COALESCE(
+                    NULLIF(TRIM(s.restaurant_service_type), ''),
+                    CASE
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM products rp
+                            WHERE rp.shop_id = s.id
+                              AND rp.is_active = 1
+                              AND JSON_UNQUOTE(JSON_EXTRACT(rp.attributes_json, '$.foodPreference')) = 'VEG'
+                        ) = 1
+                         AND EXISTS (
+                            SELECT 1
+                            FROM products rp
+                            WHERE rp.shop_id = s.id
+                              AND rp.is_active = 1
+                              AND JSON_UNQUOTE(JSON_EXTRACT(rp.attributes_json, '$.foodPreference')) IN ('NON_VEG', 'EGG')
+                        ) = 0
+                        THEN 'PURE_VEG'
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM products rp
+                            WHERE rp.shop_id = s.id
+                              AND rp.is_active = 1
+                              AND JSON_UNQUOTE(JSON_EXTRACT(rp.attributes_json, '$.foodPreference')) = 'VEG'
+                        ) = 1
+                        THEN 'VEG_NON_VEG'
+                        WHEN EXISTS (
+                            SELECT 1
+                            FROM products rp
+                            WHERE rp.shop_id = s.id
+                              AND rp.is_active = 1
+                              AND JSON_UNQUOTE(JSON_EXTRACT(rp.attributes_json, '$.foodPreference')) IN ('NON_VEG', 'EGG')
+                        ) = 1
+                        THEN 'PURE_NON_VEG'
+                        ELSE 'NOT_SET'
+                    END
+                ) AS restaurantServiceType,
+                CASE
+                    WHEN COALESCE(NULLIF(TRIM(s.restaurant_service_type), ''), 'NOT_SET') IN ('PURE_VEG', 'VEG_NON_VEG')
+                    THEN 1
+                    WHEN COALESCE(NULLIF(TRIM(s.restaurant_service_type), ''), '') = 'PURE_NON_VEG'
+                    THEN 0
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM products rp
+                        WHERE rp.shop_id = s.id
+                          AND rp.is_active = 1
+                          AND JSON_UNQUOTE(JSON_EXTRACT(rp.attributes_json, '$.foodPreference')) = 'VEG'
+                    )
+                    THEN 1 ELSE 0
+                END AS servesVeg,
+                CASE
+                    WHEN COALESCE(NULLIF(TRIM(s.restaurant_service_type), ''), '') IN ('VEG_NON_VEG', 'PURE_NON_VEG')
+                    THEN 1
+                    WHEN COALESCE(NULLIF(TRIM(s.restaurant_service_type), ''), '') = 'PURE_VEG'
+                    THEN 0
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM products rp
+                        WHERE rp.shop_id = s.id
+                          AND rp.is_active = 1
+                          AND JSON_UNQUOTE(JSON_EXTRACT(rp.attributes_json, '$.foodPreference')) = 'NON_VEG'
+                    )
+                    THEN 1 ELSE 0
+                END AS servesNonVeg,
+                CASE
+                    WHEN EXISTS (
+                        SELECT 1
+                        FROM products rp
+                        WHERE rp.shop_id = s.id
+                          AND rp.is_active = 1
+                          AND JSON_UNQUOTE(JSON_EXTRACT(rp.attributes_json, '$.foodPreference')) = 'EGG'
+                    )
+                    THEN 1 ELSE 0
+                END AS servesEgg
             FROM shops s
             LEFT JOIN files logo_file ON logo_file.id = s.logo_file_id
             LEFT JOIN files cover_file ON cover_file.id = s.cover_file_id
@@ -474,7 +632,9 @@ public interface StorefrontCatalogRepository extends Repository<ShopEntity, Long
                       AND pp.status = 'ACTIVE'
                       AND CURRENT_TIMESTAMP BETWEEN pp.starts_at AND pp.ends_at
                 ), 0) AS promotionScore,
-                image_file.object_key AS imageObjectKey
+                image_file.object_key AS imageObjectKey,
+                CAST(p.attributes_json AS CHAR) AS attributesJson,
+                JSON_UNQUOTE(JSON_EXTRACT(p.attributes_json, '$.foodPreference')) AS foodPreference
             FROM products p
             INNER JOIN shops s ON s.id = p.shop_id
             INNER JOIN shop_categories sc ON sc.id = p.shop_category_id
