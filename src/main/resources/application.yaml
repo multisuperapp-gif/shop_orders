@@ -13,7 +13,7 @@ spring:
       repositories:
         enabled: false
   datasource:
-    url: ${DB_URL:jdbc:mysql://multisuperapp1.cituis86a8r2.us-east-1.rds.amazonaws.com:3306/hyperlocal_platform}
+    url: ${DB_URL:jdbc:mysql://multisuperapp1.cj4wu46oy158.eu-north-1.rds.amazonaws.com:3306/hyperlocal_platform}
     username: ${DB_USERNAME:admin}
     password: ${DB_PASSWORD:multisuperapp1}
     driver-class-name: com.mysql.cj.jdbc.Driver
@@ -26,7 +26,7 @@ spring:
   flyway:
     enabled: ${FLYWAY_ENABLED:false}
     baseline-on-migrate: ${FLYWAY_BASELINE_ON_MIGRATE:true}
-    url: ${FLYWAY_URL:${DB_URL:jdbc:mysql://multisuperapp1.cituis86a8r2.us-east-1.rds.amazonaws.com:3306/hyperlocal_platform}}
+    url: ${FLYWAY_URL:${DB_URL:jdbc:mysql://multisuperapp1.cj4wu46oy158.eu-north-1.rds.amazonaws.com:3306/hyperlocal_platform}}
     user: ${FLYWAY_USER:${DB_USERNAME:admin}}
     password: ${FLYWAY_PASSWORD:${DB_PASSWORD:multisuperapp1}}
 
@@ -35,17 +35,17 @@ server:
 
 app:
   storage:
-    provider: ${APP_STORAGE_PROVIDER:LOCAL}
+    provider: ${APP_STORAGE_PROVIDER:S3}
     local-root: ${APP_STORAGE_LOCAL_ROOT:../Auth-VerificationService/storage/local}
     aws-region: ${AWS_REGION:us-east-1}
     public-media:
-      bucket: ${S3_PUBLIC_MEDIA_BUCKET:multisuperapp-bucket}
+      bucket: ${S3_PUBLIC_MEDIA_BUCKET:multisuperapp1-bucket}
     prefixes:
       shop-products: ${S3_PREFIX_SHOP_PRODUCTS:msa-public-media-dev/shops/products}
       shop-logos: ${S3_PREFIX_SHOP_LOGOS:msa-public-media-dev/shops/logo}
       shop-covers: ${S3_PREFIX_SHOP_COVERS:msa-public-media-dev/shops/cover}
   integrations:
-    booking-payment-url: ${BOOKING_PAYMENT_URL:http://44.217.176.56:8084}
+    booking-payment-url: ${BOOKING_PAYMENT_URL:http://13.48.86.44:8084}
   security:
     access-token-secret: ${ACCESS_TOKEN_SECRET:auth-verification-service-super-secret-key}
     access-token-validity-seconds: ${ACCESS_TOKEN_VALIDITY_SECONDS:86400}
