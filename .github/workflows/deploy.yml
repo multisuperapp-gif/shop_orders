@@ -22,7 +22,7 @@ env:
   CONTAINER_NAME: shop_orders
   APP_PORT: "8083"
   EC2_USER: ubuntu
-  EC2_HOST: 13.48.86.44
+  EC2_HOST: 13.216.199.151
   EC2_APP_DIR: /home/ubuntu/shop_orders
 
 jobs:
