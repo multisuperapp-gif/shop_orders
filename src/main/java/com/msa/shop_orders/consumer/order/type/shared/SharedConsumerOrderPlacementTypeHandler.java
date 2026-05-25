@@ -1,6 +1,7 @@
 package com.msa.shop_orders.consumer.order.type.shared;
 
 import com.msa.shop_orders.common.exception.BusinessException;
+import com.msa.shop_orders.common.mongo.MongoSequenceService;
 import com.msa.shop_orders.common.shoptype.ShopTypeFamily;
 import com.msa.shop_orders.consumer.cart.service.ConsumerCartService;
 import com.msa.shop_orders.consumer.cart.view.ConsumerCartView;
@@ -11,11 +12,11 @@ import com.msa.shop_orders.consumer.order.dto.ConsumerPlaceOrderRequest;
 import com.msa.shop_orders.consumer.order.dto.ConsumerPlaceOrderResponse;
 import com.msa.shop_orders.consumer.order.service.ShopOrderWriteService;
 import com.msa.shop_orders.consumer.order.type.ConsumerOrderPlacementTypeHandler;
-import com.msa.shop_orders.persistence.entity.PaymentEntity;
-import com.msa.shop_orders.persistence.repository.PaymentRepository;
 import com.msa.shop_orders.provider.shop.service.ShopInventoryMovementService;
 import com.msa.shop_orders.provider.shop.service.ShopRuntimeSyncService;
 import com.msa.shop_orders.provider.shop.view.ShopOrderView;
+import com.msa.shop_orders.provider.shop.view.ShopPaymentView;
+import com.msa.shop_orders.provider.shop.view.repository.ShopPaymentViewRepository;
 import com.msa.shop_orders.security.CurrentUserService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
@@ -32,26 +33,29 @@ public class SharedConsumerOrderPlacementTypeHandler implements ConsumerOrderPla
     private final ConsumerCartService consumerCartService;
     private final ConsumerCheckoutService consumerCheckoutService;
     private final ShopOrderWriteService shopOrderWriteService;
-    private final PaymentRepository paymentRepository;
+    private final ShopPaymentViewRepository shopPaymentViewRepository;
     private final ShopInventoryMovementService shopInventoryMovementService;
     private final ShopRuntimeSyncService shopRuntimeSyncService;
+    private final MongoSequenceService mongoSequenceService;
 
     public SharedConsumerOrderPlacementTypeHandler(
             CurrentUserService currentUserService,
             ConsumerCartService consumerCartService,
             ConsumerCheckoutService consumerCheckoutService,
             ShopOrderWriteService shopOrderWriteService,
-            PaymentRepository paymentRepository,
+            ShopPaymentViewRepository shopPaymentViewRepository,
             ShopInventoryMovementService shopInventoryMovementService,
-            ShopRuntimeSyncService shopRuntimeSyncService
+            ShopRuntimeSyncService shopRuntimeSyncService,
+            MongoSequenceService mongoSequenceService
     ) {
         this.currentUserService = currentUserService;
         this.consumerCartService = consumerCartService;
         this.consumerCheckoutService = consumerCheckoutService;
         this.shopOrderWriteService = shopOrderWriteService;
-        this.paymentRepository = paymentRepository;
+        this.shopPaymentViewRepository = shopPaymentViewRepository;
         this.shopInventoryMovementService = shopInventoryMovementService;
         this.shopRuntimeSyncService = shopRuntimeSyncService;
+        this.mongoSequenceService = mongoSequenceService;
     }
 
     @Override
@@ -142,7 +146,8 @@ public class SharedConsumerOrderPlacementTypeHandler implements ConsumerOrderPla
     }
 
     private Long insertPayment(Long orderId, Long userId, BigDecimal amount, String currencyCode, String paymentCode, LocalDateTime initiatedAt) {
-        PaymentEntity payment = new PaymentEntity();
+        ShopPaymentView payment = new ShopPaymentView();
+        payment.setPaymentId(mongoSequenceService.nextValue("shop-payment-id"));
         payment.setPaymentCode(paymentCode);
         payment.setPayableType("SHOP_ORDER");
         payment.setPayableId(orderId);
@@ -151,7 +156,7 @@ public class SharedConsumerOrderPlacementTypeHandler implements ConsumerOrderPla
         payment.setAmount(amount);
         payment.setCurrencyCode(currencyCode);
         payment.setInitiatedAt(initiatedAt);
-        return paymentRepository.save(payment).getId();
+        return shopPaymentViewRepository.save(payment).getPaymentId();
     }
 
     private ShopOrderView buildOrderView(ShopOrderWriteService.CreatedOrder order, LocalDateTime now) {

@@ -4,8 +4,6 @@ import com.msa.shop_orders.common.exception.BusinessException;
 import com.msa.shop_orders.common.shoptype.ShopTypeFamily;
 import com.msa.shop_orders.integration.bookingpayment.ShopOrdersBookingPaymentOrderClient;
 import com.msa.shop_orders.integration.bookingpayment.dto.ShopOrdersBookingPaymentOrderDtos.UpdateShopOrderStatusRequest;
-import com.msa.shop_orders.persistence.entity.OrderEntity;
-import com.msa.shop_orders.persistence.repository.OrderRepository;
 import com.msa.shop_orders.provider.shop.dto.ShopOrderData;
 import com.msa.shop_orders.provider.shop.dto.ShopOrderStatusUpdateRequest;
 import com.msa.shop_orders.provider.shop.service.ShopOrderStateWriteService;
@@ -13,6 +11,7 @@ import com.msa.shop_orders.provider.shop.service.ShopRuntimeViewService;
 import com.msa.shop_orders.provider.shop.type.order.ProviderShopOrderTypeHandler;
 import com.msa.shop_orders.provider.shop.view.ShopOrderView;
 import com.msa.shop_orders.provider.shop.view.ShopShellView;
+import com.msa.shop_orders.provider.shop.view.repository.ShopOrderViewRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
@@ -22,21 +21,21 @@ import java.util.Locale;
 
 @Component
 public class SharedProviderShopOrderTypeHandler implements ProviderShopOrderTypeHandler {
-    private final OrderRepository orderRepository;
     private final ShopRuntimeViewService shopRuntimeViewService;
     private final ShopOrderStateWriteService shopOrderStateWriteService;
     private final ShopOrdersBookingPaymentOrderClient bookingPaymentOrderClient;
+    private final ShopOrderViewRepository shopOrderViewRepository;
 
     public SharedProviderShopOrderTypeHandler(
-            OrderRepository orderRepository,
             ShopRuntimeViewService shopRuntimeViewService,
             ShopOrderStateWriteService shopOrderStateWriteService,
-            ShopOrdersBookingPaymentOrderClient bookingPaymentOrderClient
+            ShopOrdersBookingPaymentOrderClient bookingPaymentOrderClient,
+            ShopOrderViewRepository shopOrderViewRepository
     ) {
-        this.orderRepository = orderRepository;
         this.shopRuntimeViewService = shopRuntimeViewService;
         this.shopOrderStateWriteService = shopOrderStateWriteService;
         this.bookingPaymentOrderClient = bookingPaymentOrderClient;
+        this.shopOrderViewRepository = shopOrderViewRepository;
     }
 
     @Override
@@ -46,19 +45,14 @@ public class SharedProviderShopOrderTypeHandler implements ProviderShopOrderType
 
     @Override
     public List<ShopOrderData> orders(ShopShellView shop, String dateFilter, String status, LocalDate fromDate, LocalDate toDate) {
-        if (orderRepository.count() < 0) {
-            return List.of();
-        }
         return shopRuntimeViewService.loadOrders(shop, dateFilter, status, fromDate, toDate);
     }
 
     @Override
     public ShopOrderData updateOrderStatus(ShopShellView shop, Long orderId, ShopOrderStatusUpdateRequest request) {
-        OrderEntity order = orderRepository.findByIdAndShopId(orderId, shop.getShopId())
-                .orElseThrow(() -> new BusinessException("ORDER_NOT_FOUND", "Order not found for this shop.", HttpStatus.NOT_FOUND));
         String newStatus = normalizeOrderStatus(request.newStatus());
         Long changedByUserId = shop.getOwnerUserId();
-        String oldStatus = normalizeOrderStatus(order.getOrderStatus());
+        String oldStatus = normalizeOrderStatus(requireShopOrder(shop, orderId).getOrderStatus());
 
         if (newStatus.equalsIgnoreCase(oldStatus)) {
             return shopRuntimeViewService.loadOrder(shop, orderId);
@@ -75,7 +69,7 @@ public class SharedProviderShopOrderTypeHandler implements ProviderShopOrderType
         }
         validateLocalTransition(oldStatus, newStatus);
         ShopOrderView orderView = shopOrderStateWriteService.applyStateUpdate(
-                order,
+                orderId,
                 new ShopOrderStateWriteService.OrderStateMutation(
                         newStatus,
                         null,
@@ -85,6 +79,12 @@ public class SharedProviderShopOrderTypeHandler implements ProviderShopOrderType
                 )
         );
         return orderView == null ? shopRuntimeViewService.loadOrder(shop, orderId) : shopRuntimeViewService.toShopOrderData(orderView);
+    }
+
+    private ShopOrderView requireShopOrder(ShopShellView shop, Long orderId) {
+        return shopOrderViewRepository.findById(orderId)
+                .filter(order -> shop.getShopId().equals(order.getShopId()))
+                .orElseThrow(() -> new BusinessException("ORDER_NOT_FOUND", "Order not found for this shop.", HttpStatus.NOT_FOUND));
     }
 
     private void validateLocalTransition(String currentStatus, String newStatus) {

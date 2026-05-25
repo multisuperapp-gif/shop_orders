@@ -1,12 +1,7 @@
 package com.msa.shop_orders.provider.shop.service;
 
 import com.msa.shop_orders.common.exception.BusinessException;
-import com.msa.shop_orders.persistence.entity.ShopCategoryEntity;
-import com.msa.shop_orders.persistence.entity.ShopInventoryCategoryEntity;
-import com.msa.shop_orders.persistence.entity.ShopTypeCategoryMappingEntity;
-import com.msa.shop_orders.persistence.repository.ShopCategoryRepository;
-import com.msa.shop_orders.persistence.repository.ShopInventoryCategoryRepository;
-import com.msa.shop_orders.persistence.repository.ShopTypeCategoryMappingRepository;
+import com.msa.shop_orders.common.mongo.MongoSequenceService;
 import com.msa.shop_orders.provider.shop.dto.ShopAvailableCategoryData;
 import com.msa.shop_orders.provider.shop.dto.ShopCategoryData;
 import com.msa.shop_orders.provider.shop.dto.ShopCreateCategoryRequest;
@@ -27,24 +22,18 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
     private final ShopContextService shopContextService;
     private final ShopTypeViewService shopTypeViewService;
     private final ShopCategoryViewService shopCategoryViewService;
-    private final ShopCategoryRepository shopCategoryRepository;
-    private final ShopTypeCategoryMappingRepository shopTypeCategoryMappingRepository;
-    private final ShopInventoryCategoryRepository shopInventoryCategoryRepository;
+    private final MongoSequenceService mongoSequenceService;
 
     public ShopCategoryServiceImpl(
             ShopContextService shopContextService,
             ShopTypeViewService shopTypeViewService,
             ShopCategoryViewService shopCategoryViewService,
-            ShopCategoryRepository shopCategoryRepository,
-            ShopTypeCategoryMappingRepository shopTypeCategoryMappingRepository,
-            ShopInventoryCategoryRepository shopInventoryCategoryRepository
+            MongoSequenceService mongoSequenceService
     ) {
         this.shopContextService = shopContextService;
         this.shopTypeViewService = shopTypeViewService;
         this.shopCategoryViewService = shopCategoryViewService;
-        this.shopCategoryRepository = shopCategoryRepository;
-        this.shopTypeCategoryMappingRepository = shopTypeCategoryMappingRepository;
-        this.shopInventoryCategoryRepository = shopInventoryCategoryRepository;
+        this.mongoSequenceService = mongoSequenceService;
     }
 
     @Override
@@ -80,34 +69,14 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
         String displayName = normalizeDisplayName(request.name());
         String normalizedName = normalizeKey(displayName);
 
-        ShopCategoryEntity categoryEntity = shopCategoryRepository.findByNormalizedNameIgnoreCase(normalizedName)
-                .orElseGet(() -> {
-                    ShopCategoryEntity entity = new ShopCategoryEntity();
-                    entity.setName(displayName);
-                    entity.setNormalizedName(normalizedName);
-                    entity.setCreatedByShopId(shopEntity.getShopId());
-                    entity.setActive(true);
-                    return shopCategoryRepository.save(entity);
-                });
-
-        if (!categoryEntity.isActive()) {
-            categoryEntity.setActive(true);
-            categoryEntity.setName(displayName);
-            categoryEntity = shopCategoryRepository.save(categoryEntity);
-        }
-
-        ensureTypeMapping(shopTypeId, categoryEntity.getId());
-        shopCategoryViewService.syncTypeCategory(shopTypeId, categoryEntity);
-        if (shopCategoryViewService.findShopCategory(shopEntity.getShopId(), shopTypeId, categoryEntity.getId()).isPresent()) {
+        ShopCategoryView typeCategory = shopCategoryViewService.findTypeCategoryByNormalizedName(normalizedName).orElse(null);
+        Long categoryId = typeCategory == null ? mongoSequenceService.nextValue("shop-category-id") : typeCategory.getCategoryId();
+        if (shopCategoryViewService.findShopCategory(shopEntity.getShopId(), shopTypeId, categoryId).isPresent()) {
             throw new BusinessException("CATEGORY_ALREADY_ADDED", "Category is already added for this shop.", HttpStatus.BAD_REQUEST);
         }
-        ShopInventoryCategoryEntity inventoryCategoryEntity = new ShopInventoryCategoryEntity();
-        inventoryCategoryEntity.setShopId(shopEntity.getShopId());
-        inventoryCategoryEntity.setShopCategoryId(categoryEntity.getId());
-        inventoryCategoryEntity.setEnabled(true);
-        shopInventoryCategoryRepository.save(inventoryCategoryEntity);
-        shopCategoryViewService.syncShopCategory(shopEntity.getShopId(), shopTypeId, categoryEntity, true);
-        return new ShopCategoryData(categoryEntity.getId(), categoryEntity.getName(), true);
+        shopCategoryViewService.upsertTypeCategory(shopTypeId, categoryId, displayName, normalizedName, true);
+        shopCategoryViewService.upsertShopCategory(shopEntity.getShopId(), shopTypeId, categoryId, displayName, normalizedName, true);
+        return new ShopCategoryData(categoryId, displayName, true);
     }
 
     @Override
@@ -117,22 +86,21 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
         Long shopTypeId = requireShopTypeId(shopEntity);
         ShopCategoryView allowedCategory = shopCategoryViewService.findAllowedTypeCategory(shopTypeId, categoryId)
                 .orElseThrow(() -> new BusinessException("CATEGORY_NOT_ALLOWED", "Selected category is not allowed for this shop type.", HttpStatus.BAD_REQUEST));
-        ShopCategoryEntity categoryEntity = shopCategoryRepository.findById(categoryId)
-                .filter(ShopCategoryEntity::isActive)
-                .orElseThrow(() -> new BusinessException("CATEGORY_NOT_FOUND", "Shop category not found.", HttpStatus.BAD_REQUEST));
         if (!allowedCategory.isEnabled()) {
             throw new BusinessException("CATEGORY_NOT_ALLOWED", "Selected category is not allowed for this shop type.", HttpStatus.BAD_REQUEST);
         }
         if (shopCategoryViewService.findShopCategory(shopEntity.getShopId(), shopTypeId, categoryId).isPresent()) {
             throw new BusinessException("CATEGORY_ALREADY_ADDED", "Category is already added for this shop.", HttpStatus.BAD_REQUEST);
         }
-        ShopInventoryCategoryEntity inventoryCategoryEntity = new ShopInventoryCategoryEntity();
-        inventoryCategoryEntity.setShopId(shopEntity.getShopId());
-        inventoryCategoryEntity.setShopCategoryId(categoryId);
-        inventoryCategoryEntity.setEnabled(true);
-        shopInventoryCategoryRepository.save(inventoryCategoryEntity);
-        shopCategoryViewService.syncShopCategory(shopEntity.getShopId(), shopTypeId, categoryEntity, true);
-        return new ShopCategoryData(categoryEntity.getId(), categoryEntity.getName(), true);
+        shopCategoryViewService.upsertShopCategory(
+                shopEntity.getShopId(),
+                shopTypeId,
+                allowedCategory.getCategoryId(),
+                allowedCategory.getName(),
+                allowedCategory.getNormalizedName(),
+                true
+        );
+        return new ShopCategoryData(allowedCategory.getCategoryId(), allowedCategory.getName(), true);
     }
 
     @Override
@@ -140,17 +108,18 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
     public ShopCategoryData updateCategoryStatus(Long categoryId, ShopCategoryStatusUpdateRequest request) {
         ShopShellView shopEntity = shopContextService.currentApprovedShop();
         Long shopTypeId = requireShopTypeId(shopEntity);
-        ShopInventoryCategoryEntity inventoryCategoryEntity = shopInventoryCategoryRepository
-                .findByShopIdAndShopCategoryId(shopEntity.getShopId(), categoryId)
-                .orElseThrow(() -> new BusinessException("CATEGORY_NOT_FOUND", "Shop category not found.", HttpStatus.BAD_REQUEST));
-        ShopCategoryEntity categoryEntity = shopCategoryRepository.findById(categoryId)
-                .filter(ShopCategoryEntity::isActive)
-                .orElseThrow(() -> new BusinessException("CATEGORY_NOT_FOUND", "Shop category not found.", HttpStatus.BAD_REQUEST));
         boolean nextEnabled = Boolean.TRUE.equals(request.enabled());
-        inventoryCategoryEntity.setEnabled(nextEnabled);
-        shopInventoryCategoryRepository.save(inventoryCategoryEntity);
-        shopCategoryViewService.syncShopCategory(shopEntity.getShopId(), shopTypeId, categoryEntity, nextEnabled);
-        return new ShopCategoryData(categoryEntity.getId(), categoryEntity.getName(), nextEnabled);
+        ShopCategoryView category = shopCategoryViewService.findShopCategory(shopEntity.getShopId(), shopTypeId, categoryId)
+                .orElseThrow(() -> new BusinessException("CATEGORY_NOT_FOUND", "Shop category not found.", HttpStatus.BAD_REQUEST));
+        shopCategoryViewService.upsertShopCategory(
+                shopEntity.getShopId(),
+                shopTypeId,
+                category.getCategoryId(),
+                category.getName(),
+                category.getNormalizedName(),
+                nextEnabled
+        );
+        return new ShopCategoryData(category.getCategoryId(), category.getName(), nextEnabled);
     }
 
     private Long requireShopTypeId(ShopShellView shopEntity) {
@@ -164,21 +133,8 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
         return shopTypeId;
     }
 
-    private void ensureTypeMapping(Long shopTypeId, Long shopCategoryId) {
-        if (shopCategoryViewService.findAllowedTypeCategory(shopTypeId, shopCategoryId).isPresent()) {
-            return;
-        }
-        ShopTypeCategoryMappingEntity mappingEntity = new ShopTypeCategoryMappingEntity();
-        mappingEntity.setShopTypeId(shopTypeId);
-        mappingEntity.setShopCategoryId(shopCategoryId);
-        mappingEntity.setActive(true);
-        ShopTypeCategoryMappingEntity savedMapping = shopTypeCategoryMappingRepository.save(mappingEntity);
-        shopCategoryRepository.findById(savedMapping.getShopCategoryId())
-                .ifPresent(category -> shopCategoryViewService.syncTypeCategory(savedMapping.getShopTypeId(), category));
-    }
-
     private String normalizeDisplayName(String rawName) {
-        String normalized = rawName == null ? "" : rawName.trim().replaceAll("\\s+", " ");
+        String normalized = rawName == null ? "" : rawName.trim().replaceAll("\s+", " ");
         if (normalized.isBlank()) {
             throw new BusinessException("CATEGORY_NAME_REQUIRED", "Category name is required.", HttpStatus.BAD_REQUEST);
         }
@@ -190,6 +146,6 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
     }
 
     private String normalizeKey(String value) {
-        return value == null ? "" : value.trim().replaceAll("\\s+", " ").toUpperCase(Locale.ROOT);
+        return value == null ? "" : value.trim().replaceAll("\s+", " ").toUpperCase(Locale.ROOT);
     }
 }

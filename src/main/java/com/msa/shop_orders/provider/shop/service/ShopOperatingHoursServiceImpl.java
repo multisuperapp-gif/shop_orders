@@ -1,12 +1,11 @@
 package com.msa.shop_orders.provider.shop.service;
 
 import com.msa.shop_orders.common.exception.BusinessException;
-import com.msa.shop_orders.persistence.entity.ShopOperatingHoursEntity;
-import com.msa.shop_orders.persistence.repository.ShopOperatingHoursRepository;
 import com.msa.shop_orders.provider.shop.dto.ShopOperatingHourData;
 import com.msa.shop_orders.provider.shop.dto.ShopOperatingHourUpdateItem;
 import com.msa.shop_orders.provider.shop.dto.ShopOperatingHoursData;
 import com.msa.shop_orders.provider.shop.dto.ShopOperatingHoursUpdateRequest;
+import com.msa.shop_orders.provider.shop.view.ShopOperatingHoursView;
 import com.msa.shop_orders.provider.shop.view.ShopShellView;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -28,26 +27,25 @@ public class ShopOperatingHoursServiceImpl implements ShopOperatingHoursService 
     private final ShopContextService shopContextService;
     private final ShopLocationViewService shopLocationViewService;
     private final ShopDeliveryRuleViewService shopDeliveryRuleViewService;
-    private final ShopOperatingHoursRepository shopOperatingHoursRepository;
+    private final ShopOperatingHoursViewService shopOperatingHoursViewService;
 
     public ShopOperatingHoursServiceImpl(
             ShopContextService shopContextService,
             ShopLocationViewService shopLocationViewService,
             ShopDeliveryRuleViewService shopDeliveryRuleViewService,
-            ShopOperatingHoursRepository shopOperatingHoursRepository
+            ShopOperatingHoursViewService shopOperatingHoursViewService
     ) {
         this.shopContextService = shopContextService;
         this.shopLocationViewService = shopLocationViewService;
         this.shopDeliveryRuleViewService = shopDeliveryRuleViewService;
-        this.shopOperatingHoursRepository = shopOperatingHoursRepository;
+        this.shopOperatingHoursViewService = shopOperatingHoursViewService;
     }
 
     @Override
     public ShopOperatingHoursData fetchCurrent() {
         ShopShellView shop = shopContextService.currentApprovedShop();
         Long locationId = resolvePrimaryLocationId(shop.getShopId());
-        List<ShopOperatingHoursEntity> existingRows = shopOperatingHoursRepository
-                .findByShopLocationIdOrderByWeekdayAsc(locationId);
+        List<ShopOperatingHoursView> existingRows = shopOperatingHoursViewService.findByShopId(shop.getShopId());
         return buildData(shop.getShopId(), locationId, existingRows);
     }
 
@@ -56,10 +54,9 @@ public class ShopOperatingHoursServiceImpl implements ShopOperatingHoursService 
     public ShopOperatingHoursData saveCurrent(ShopOperatingHoursUpdateRequest request) {
         ShopShellView shop = shopContextService.currentApprovedShop();
         Long locationId = resolvePrimaryLocationId(shop.getShopId());
-        List<ShopOperatingHoursEntity> existingRows = shopOperatingHoursRepository
-                .findByShopLocationIdOrderByWeekdayAsc(locationId);
-        Map<Integer, ShopOperatingHoursEntity> existingByWeekday = new LinkedHashMap<>();
-        for (ShopOperatingHoursEntity row : existingRows) {
+        List<ShopOperatingHoursView> existingRows = shopOperatingHoursViewService.findByShopId(shop.getShopId());
+        Map<Integer, ShopOperatingHoursView> existingByWeekday = new LinkedHashMap<>();
+        for (ShopOperatingHoursView row : existingRows) {
             existingByWeekday.put(row.getWeekday(), row);
         }
 
@@ -77,10 +74,12 @@ public class ShopOperatingHoursServiceImpl implements ShopOperatingHoursService 
             }
         }
 
-        List<ShopOperatingHoursEntity> rowsToSave = new ArrayList<>();
+        List<ShopOperatingHoursView> rowsToSave = new ArrayList<>();
         for (int weekday = 1; weekday <= 7; weekday++) {
             ShopOperatingHourUpdateItem item = requestByWeekday.get(weekday);
-            ShopOperatingHoursEntity entity = existingByWeekday.getOrDefault(weekday, new ShopOperatingHoursEntity());
+            ShopOperatingHoursView entity = existingByWeekday.getOrDefault(weekday, new ShopOperatingHoursView());
+            entity.setId("shop:" + shop.getShopId() + ":weekday:" + weekday);
+            entity.setShopId(shop.getShopId());
             entity.setShopLocationId(locationId);
             entity.setWeekday(weekday);
 
@@ -99,15 +98,15 @@ public class ShopOperatingHoursServiceImpl implements ShopOperatingHoursService 
                     );
                 }
                 entity.setClosed(false);
-                entity.setOpenTime(openTime);
-                entity.setCloseTime(closeTime);
+                entity.setOpenTime(formatTime(openTime));
+                entity.setCloseTime(formatTime(closeTime));
             }
             rowsToSave.add(entity);
         }
 
-        List<ShopOperatingHoursEntity> savedRows = shopOperatingHoursRepository.saveAll(rowsToSave)
+        List<ShopOperatingHoursView> savedRows = shopOperatingHoursViewService.saveAll(rowsToSave)
                 .stream()
-                .sorted(Comparator.comparing(ShopOperatingHoursEntity::getWeekday))
+                .sorted(Comparator.comparing(ShopOperatingHoursView::getWeekday))
                 .toList();
         return buildData(shop.getShopId(), locationId, savedRows);
     }
@@ -124,21 +123,21 @@ public class ShopOperatingHoursServiceImpl implements ShopOperatingHoursService 
     private ShopOperatingHoursData buildData(
             Long shopId,
             Long locationId,
-            List<ShopOperatingHoursEntity> existingRows
+            List<ShopOperatingHoursView> existingRows
     ) {
-        Map<Integer, ShopOperatingHoursEntity> existingByWeekday = new LinkedHashMap<>();
-        for (ShopOperatingHoursEntity row : existingRows) {
+        Map<Integer, ShopOperatingHoursView> existingByWeekday = new LinkedHashMap<>();
+        for (ShopOperatingHoursView row : existingRows) {
             existingByWeekday.put(row.getWeekday(), row);
         }
 
         List<ShopOperatingHourData> days = new ArrayList<>();
         for (int weekday = 1; weekday <= 7; weekday++) {
-            ShopOperatingHoursEntity row = existingByWeekday.get(weekday);
+            ShopOperatingHoursView row = existingByWeekday.get(weekday);
             days.add(new ShopOperatingHourData(
                     weekday,
                     row == null || row.isClosed(),
-                    formatTime(row != null ? row.getOpenTime() : DEFAULT_OPEN_TIME),
-                    formatTime(row != null ? row.getCloseTime() : DEFAULT_CLOSE_TIME)
+                    row == null || row.getOpenTime() == null ? formatTime(DEFAULT_OPEN_TIME) : row.getOpenTime(),
+                    row == null || row.getCloseTime() == null ? formatTime(DEFAULT_CLOSE_TIME) : row.getCloseTime()
             ));
         }
 

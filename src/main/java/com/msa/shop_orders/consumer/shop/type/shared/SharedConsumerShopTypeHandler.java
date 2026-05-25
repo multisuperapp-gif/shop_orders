@@ -7,8 +7,6 @@ import com.msa.shop_orders.consumer.shop.dto.ConsumerShopDetailData;
 import com.msa.shop_orders.consumer.shop.dto.ConsumerShopSummaryData;
 import com.msa.shop_orders.consumer.shop.dto.ConsumerShopTypeData;
 import com.msa.shop_orders.consumer.shop.type.ConsumerShopTypeHandler;
-import com.msa.shop_orders.persistence.entity.ProductEntity;
-import com.msa.shop_orders.persistence.repository.ProductRepository;
 import com.msa.shop_orders.provider.shop.dto.ShopProductData;
 import com.msa.shop_orders.provider.shop.service.ShopCategoryViewService;
 import com.msa.shop_orders.provider.shop.service.ShopRuntimeViewService;
@@ -17,7 +15,6 @@ import com.msa.shop_orders.provider.shop.view.ShopCategoryView;
 import com.msa.shop_orders.provider.shop.view.ShopShellView;
 import com.msa.shop_orders.provider.shop.view.ShopTypeView;
 import com.msa.shop_orders.provider.shop.view.repository.ShopShellViewRepository;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
@@ -28,26 +25,20 @@ import java.util.Objects;
 @Component
 public class SharedConsumerShopTypeHandler implements ConsumerShopTypeHandler {
     private final ShopShellViewRepository shopShellViewRepository;
-    private final ProductRepository productRepository;
     private final ShopTypeViewService shopTypeViewService;
     private final ShopCategoryViewService shopCategoryViewService;
     private final ShopRuntimeViewService shopRuntimeViewService;
-    private final boolean viewStoreEnabled;
 
     public SharedConsumerShopTypeHandler(
             ShopShellViewRepository shopShellViewRepository,
-            ProductRepository productRepository,
             ShopTypeViewService shopTypeViewService,
             ShopCategoryViewService shopCategoryViewService,
-            ShopRuntimeViewService shopRuntimeViewService,
-            @Value("${mongodb.enabled:false}") boolean viewStoreEnabled
+            ShopRuntimeViewService shopRuntimeViewService
     ) {
         this.shopShellViewRepository = shopShellViewRepository;
-        this.productRepository = productRepository;
         this.shopTypeViewService = shopTypeViewService;
         this.shopCategoryViewService = shopCategoryViewService;
         this.shopRuntimeViewService = shopRuntimeViewService;
-        this.viewStoreEnabled = viewStoreEnabled;
     }
 
     @Override
@@ -102,11 +93,6 @@ public class SharedConsumerShopTypeHandler implements ConsumerShopTypeHandler {
     @Override
     public ShopProductData shopProductDetail(Long shopId, Long productId) {
         ShopShellView shop = requireApprovedShop(shopId);
-        ProductEntity productEntity = productRepository.findById(productId)
-                .orElseThrow(() -> new BusinessException("PRODUCT_NOT_FOUND", "Product not found.", HttpStatus.NOT_FOUND));
-        if (!Objects.equals(productEntity.getShopId(), shopId)) {
-            throw new BusinessException("PRODUCT_NOT_FOUND", "Product not found for this shop.", HttpStatus.NOT_FOUND);
-        }
         ShopProductData data = shopRuntimeViewService.loadProduct(shop, productId);
         if (!data.active()) {
             throw new BusinessException("PRODUCT_NOT_FOUND", "Product not found.", HttpStatus.NOT_FOUND);
@@ -128,9 +114,6 @@ public class SharedConsumerShopTypeHandler implements ConsumerShopTypeHandler {
     }
 
     private List<ShopShellView> loadStorefrontShells(Long shopTypeId, String search) {
-        if (!viewStoreEnabled) {
-            return List.of();
-        }
         List<ShopShellView> shells = shopTypeId == null
                 ? shopShellViewRepository.findByApprovalStatus("APPROVED")
                 : shopShellViewRepository.findByApprovalStatusAndShopTypeId("APPROVED", shopTypeId);

@@ -5,16 +5,13 @@ import com.msa.shop_orders.consumer.cart.view.ConsumerCartView;
 import com.msa.shop_orders.consumer.cart.service.ConsumerCartService;
 import com.msa.shop_orders.consumer.checkout.dto.ConsumerCheckoutPreviewData;
 import com.msa.shop_orders.consumer.checkout.dto.ConsumerCheckoutPreviewRequest;
-import com.msa.shop_orders.persistence.entity.ShopDeliveryRuleEntity;
 import com.msa.shop_orders.persistence.entity.ShopLocationEntity;
-import com.msa.shop_orders.persistence.entity.ShopOperatingHoursEntity;
 import com.msa.shop_orders.persistence.entity.UserAddressEntity;
-import com.msa.shop_orders.persistence.repository.ShopDeliveryRuleRepository;
 import com.msa.shop_orders.persistence.repository.ShopLocationRepository;
-import com.msa.shop_orders.persistence.repository.ShopOperatingHoursRepository;
 import com.msa.shop_orders.persistence.repository.UserAddressRepository;
 import com.msa.shop_orders.provider.shop.dto.ShopProductDeliveryRuleData;
 import com.msa.shop_orders.provider.shop.service.ShopDeliveryRuleViewService;
+import com.msa.shop_orders.provider.shop.service.ShopOperatingHoursViewService;
 import com.msa.shop_orders.security.CurrentUserService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -32,8 +29,7 @@ public class ConsumerCheckoutService {
     private final ShopDeliveryRuleViewService shopDeliveryRuleViewService;
     private final UserAddressRepository userAddressRepository;
     private final ShopLocationRepository shopLocationRepository;
-    private final ShopDeliveryRuleRepository shopDeliveryRuleRepository;
-    private final ShopOperatingHoursRepository shopOperatingHoursRepository;
+    private final ShopOperatingHoursViewService shopOperatingHoursViewService;
 
     public ConsumerCheckoutService(
             CurrentUserService currentUserService,
@@ -41,16 +37,14 @@ public class ConsumerCheckoutService {
             ShopDeliveryRuleViewService shopDeliveryRuleViewService,
             UserAddressRepository userAddressRepository,
             ShopLocationRepository shopLocationRepository,
-            ShopDeliveryRuleRepository shopDeliveryRuleRepository,
-            ShopOperatingHoursRepository shopOperatingHoursRepository
+            ShopOperatingHoursViewService shopOperatingHoursViewService
     ) {
         this.currentUserService = currentUserService;
         this.consumerCartService = consumerCartService;
         this.shopDeliveryRuleViewService = shopDeliveryRuleViewService;
         this.userAddressRepository = userAddressRepository;
         this.shopLocationRepository = shopLocationRepository;
-        this.shopDeliveryRuleRepository = shopDeliveryRuleRepository;
-        this.shopOperatingHoursRepository = shopOperatingHoursRepository;
+        this.shopOperatingHoursViewService = shopOperatingHoursViewService;
     }
 
     @Transactional(readOnly = true)
@@ -165,19 +159,18 @@ public class ConsumerCheckoutService {
         if (primaryLocation == null) {
             throw new BusinessException("SHOP_NOT_FOUND", "Shop not found.", HttpStatus.NOT_FOUND);
         }
-        ShopDeliveryRuleEntity rule = shopDeliveryRuleRepository.findByShopLocationId(primaryLocation.getId()).orElse(null);
         return new SqlShopRuleRow(
                 shopId,
                 null,
                 new ShopProductDeliveryRuleData(
                         primaryLocation.getId(),
-                        rule == null ? "DELIVERY" : rule.getDeliveryType(),
-                        rule == null ? BigDecimal.ZERO : rule.getRadiusKm(),
-                        rule == null ? BigDecimal.ZERO : rule.getMinOrderAmount(),
-                        rule == null ? BigDecimal.ZERO : rule.getDeliveryFee(),
-                        rule == null ? new BigDecimal("999999999.99") : rule.getFreeDeliveryAbove(),
-                        rule == null ? 30 : rule.getOrderCutoffMinutesBeforeClose(),
-                        rule == null ? 60 : rule.getClosingSoonMinutes()
+                        "DELIVERY",
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        BigDecimal.ZERO,
+                        new BigDecimal("999999999.99"),
+                        30,
+                        60
                 )
         );
     }
@@ -188,12 +181,12 @@ public class ConsumerCheckoutService {
             throw new BusinessException("SHOP_NOT_FOUND", "Shop not found.", HttpStatus.NOT_FOUND);
         }
         int weekday = java.time.LocalDate.now().getDayOfWeek().getValue() - 1;
-        ShopOperatingHoursEntity hours = shopOperatingHoursRepository.findFirstByShopLocationIdAndWeekday(primaryLocation.getId(), weekday).orElse(null);
+        var hours = shopOperatingHoursViewService.findByShopIdAndWeekday(shopId, weekday).orElse(null);
         return new OperatingHoursRow(
                 null,
                 hours != null && hours.isClosed(),
-                hours == null ? null : hours.getOpenTime(),
-                hours == null ? null : hours.getCloseTime()
+                hours == null || hours.getOpenTime() == null ? null : LocalTime.parse(hours.getOpenTime()),
+                hours == null || hours.getCloseTime() == null ? null : LocalTime.parse(hours.getCloseTime())
         );
     }
 

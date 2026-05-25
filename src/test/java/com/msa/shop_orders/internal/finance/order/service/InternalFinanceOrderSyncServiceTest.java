@@ -2,20 +2,12 @@ package com.msa.shop_orders.internal.finance.order.service;
 
 import com.msa.shop_orders.consumer.order.service.ShopOrderWriteService;
 import com.msa.shop_orders.internal.finance.order.dto.InternalFinanceOrderDtos;
-import com.msa.shop_orders.persistence.repository.InventoryRepository;
-import com.msa.shop_orders.persistence.repository.OrderItemRepository;
-import com.msa.shop_orders.persistence.repository.OrderRepository;
-import com.msa.shop_orders.persistence.repository.ProductRepository;
-import com.msa.shop_orders.persistence.repository.ProductVariantRepository;
-import com.msa.shop_orders.persistence.repository.ShopDeliveryRuleRepository;
-import com.msa.shop_orders.persistence.repository.ShopLocationRepository;
-import com.msa.shop_orders.persistence.repository.UserAddressRepository;
 import com.msa.shop_orders.provider.shop.service.ShopInventoryMovementService;
 import com.msa.shop_orders.provider.shop.service.ShopOrderStateWriteService;
 import com.msa.shop_orders.provider.shop.service.ShopRuntimeSyncService;
 import com.msa.shop_orders.provider.shop.service.ShopRuntimeViewService;
+import com.msa.shop_orders.provider.shop.view.repository.ShopProductViewRepository;
 import com.msa.shop_orders.provider.shop.view.repository.ShopOrderViewRepository;
-import com.msa.shop_orders.provider.shop.view.repository.ShopShellViewRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -29,25 +21,9 @@ import static org.mockito.Mockito.verify;
 class InternalFinanceOrderSyncServiceTest {
 
     @Mock
-    private OrderRepository orderRepository;
-    @Mock
-    private OrderItemRepository orderItemRepository;
-    @Mock
     private ShopOrderWriteService shopOrderWriteService;
     @Mock
     private ShopOrderStateWriteService shopOrderStateWriteService;
-    @Mock
-    private ProductRepository productRepository;
-    @Mock
-    private ProductVariantRepository productVariantRepository;
-    @Mock
-    private InventoryRepository inventoryRepository;
-    @Mock
-    private ShopLocationRepository shopLocationRepository;
-    @Mock
-    private ShopDeliveryRuleRepository shopDeliveryRuleRepository;
-    @Mock
-    private UserAddressRepository userAddressRepository;
     @Mock
     private ShopRuntimeViewService shopRuntimeViewService;
     @Mock
@@ -57,28 +33,20 @@ class InternalFinanceOrderSyncServiceTest {
     @Mock
     private ShopOrderViewRepository shopOrderViewRepository;
     @Mock
-    private ShopShellViewRepository shopShellViewRepository;
+    private ShopProductViewRepository shopProductViewRepository;
 
     private InternalFinanceOrderSyncService service;
 
     @BeforeEach
     void setUp() {
         service = new InternalFinanceOrderSyncService(
-                orderRepository,
-                orderItemRepository,
                 shopOrderWriteService,
                 shopOrderStateWriteService,
-                productRepository,
-                productVariantRepository,
-                inventoryRepository,
-                shopLocationRepository,
-                shopDeliveryRuleRepository,
-                userAddressRepository,
                 shopRuntimeViewService,
                 shopRuntimeSyncService,
                 shopInventoryMovementService,
                 shopOrderViewRepository,
-                shopShellViewRepository
+                shopProductViewRepository
         );
     }
 

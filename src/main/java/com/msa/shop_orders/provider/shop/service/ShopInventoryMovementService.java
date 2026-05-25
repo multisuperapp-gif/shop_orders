@@ -1,46 +1,28 @@
 package com.msa.shop_orders.provider.shop.service;
 
 import com.msa.shop_orders.consumer.cart.view.ConsumerCartView;
-import com.msa.shop_orders.persistence.entity.OrderEntity;
-import com.msa.shop_orders.persistence.entity.OrderItemEntity;
-import com.msa.shop_orders.persistence.entity.ProductVariantEntity;
-import com.msa.shop_orders.persistence.repository.OrderItemRepository;
-import com.msa.shop_orders.persistence.repository.OrderRepository;
-import com.msa.shop_orders.persistence.repository.ProductVariantRepository;
 import com.msa.shop_orders.provider.shop.view.ShopInventoryMovementView;
+import com.msa.shop_orders.provider.shop.view.ShopOrderView;
 import com.msa.shop_orders.provider.shop.view.repository.ShopInventoryMovementViewRepository;
-import org.springframework.beans.factory.annotation.Value;
+import com.msa.shop_orders.provider.shop.view.repository.ShopOrderViewRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDateTime;
-import java.util.Collection;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 @Service
 public class ShopInventoryMovementService {
     private final ShopInventoryMovementViewRepository shopInventoryMovementViewRepository;
-    private final OrderRepository orderRepository;
-    private final OrderItemRepository orderItemRepository;
-    private final ProductVariantRepository productVariantRepository;
-    private final boolean viewStoreEnabled;
+    private final ShopOrderViewRepository shopOrderViewRepository;
 
     public ShopInventoryMovementService(
             ShopInventoryMovementViewRepository shopInventoryMovementViewRepository,
-            OrderRepository orderRepository,
-            OrderItemRepository orderItemRepository,
-            ProductVariantRepository productVariantRepository,
-            @Value("${mongodb.enabled:false}") boolean viewStoreEnabled
+            ShopOrderViewRepository shopOrderViewRepository
     ) {
         this.shopInventoryMovementViewRepository = shopInventoryMovementViewRepository;
-        this.orderRepository = orderRepository;
-        this.orderItemRepository = orderItemRepository;
-        this.productVariantRepository = productVariantRepository;
-        this.viewStoreEnabled = viewStoreEnabled;
+        this.shopOrderViewRepository = shopOrderViewRepository;
     }
 
     public void recordReserveAfterCommit(
@@ -51,7 +33,7 @@ public class ShopInventoryMovementService {
             List<ConsumerCartView.Item> items,
             String reason
     ) {
-        if (!viewStoreEnabled || items == null || items.isEmpty()) {
+        if (items == null || items.isEmpty()) {
             return;
         }
         List<ShopInventoryMovementView> documents = items.stream()
@@ -110,38 +92,23 @@ public class ShopInventoryMovementService {
             String reason,
             String sourceService
     ) {
-        if (!viewStoreEnabled || orderId == null || movementType == null || movementType.isBlank()) {
+        if (orderId == null || movementType == null || movementType.isBlank()) {
             return;
         }
-        OrderEntity order = orderRepository.findById(orderId).orElse(null);
-        if (order == null) {
+        ShopOrderView documentOrder = shopOrderViewRepository.findById(orderId).orElse(null);
+        if (documentOrder != null) {
+            List<ShopInventoryMovementView> documents = (documentOrder.getItems() == null ? List.<ShopOrderView.Item>of() : documentOrder.getItems()).stream()
+                    .map(item -> orderMovementDocument(documentOrder, item, movementType, reason, sourceService))
+                    .toList();
+            shopInventoryMovementViewRepository.saveAll(documents);
             return;
         }
-        List<OrderItemEntity> items = orderItemRepository.findByOrderIdIn(List.of(orderId));
-        if (items.isEmpty()) {
-            return;
-        }
-        Map<Long, Long> productIdByVariantId = loadProductIdsByVariantId(items);
-        List<ShopInventoryMovementView> documents = items.stream()
-                .map(item -> orderMovementDocument(order, item, productIdByVariantId, movementType, reason, sourceService))
-                .toList();
-        shopInventoryMovementViewRepository.saveAll(documents);
-    }
-
-    private Map<Long, Long> loadProductIdsByVariantId(Collection<OrderItemEntity> items) {
-        return productVariantRepository.findAllById(items.stream()
-                        .map(OrderItemEntity::getVariantId)
-                        .filter(java.util.Objects::nonNull)
-                        .distinct()
-                        .toList())
-                .stream()
-                .collect(Collectors.toMap(ProductVariantEntity::getId, ProductVariantEntity::getProductId, (left, right) -> left, LinkedHashMap::new));
+        // Shop runtime source of truth is Mongo; if the order doc is missing, we do not rebuild from SQL.
     }
 
     private ShopInventoryMovementView orderMovementDocument(
-            OrderEntity order,
-            OrderItemEntity item,
-            Map<Long, Long> productIdByVariantId,
+            ShopOrderView order,
+            ShopOrderView.Item item,
             String movementType,
             String reason,
             String sourceService
@@ -149,14 +116,16 @@ public class ShopInventoryMovementService {
         ShopInventoryMovementView document = new ShopInventoryMovementView();
         document.setShopId(order.getShopId());
         document.setUserId(order.getUserId());
-        document.setOrderId(order.getId());
+        document.setOrderId(order.getOrderId());
         document.setOrderCode(order.getOrderCode());
-        document.setProductId(productIdByVariantId.get(item.getVariantId()));
+        document.setProductId(item.getProductId());
         document.setVariantId(item.getVariantId());
+        document.setProductName(item.getProductName());
+        document.setVariantName(item.getVariantName());
         document.setQuantity(item.getQuantity());
         document.setMovementType(movementType);
         document.setReferenceType("SHOP_ORDER");
-        document.setReferenceId(order.getId());
+        document.setReferenceId(order.getOrderId());
         document.setReferenceCode(order.getOrderCode());
         document.setSourceService(sourceService);
         document.setReason(reason);

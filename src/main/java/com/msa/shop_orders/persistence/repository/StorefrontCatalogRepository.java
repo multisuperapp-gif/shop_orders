@@ -14,7 +14,7 @@ public interface StorefrontCatalogRepository extends Repository<ShopEntity, Long
         String getName();
         String getNormalizedName();
         String getThemeColor();
-        Boolean getComingSoon();
+        Integer getComingSoon();
         String getComingSoonMessage();
         String getIconObjectKey();
         String getBannerObjectKey();
@@ -28,7 +28,7 @@ public interface StorefrontCatalogRepository extends Repository<ShopEntity, Long
         String getName();
         String getNormalizedName();
         String getThemeColor();
-        Boolean getComingSoon();
+        Integer getComingSoon();
         String getComingSoonMessage();
         String getImageObjectKey();
         Integer getSortOrder();
@@ -139,17 +139,15 @@ public interface StorefrontCatalogRepository extends Repository<ShopEntity, Long
     @Query(value = """
             SELECT
                 st.id AS id,
-                COALESCE(st.display_label, st.name) AS name,
+                st.name AS name,
                 st.normalized_name AS normalizedName,
-                st.theme_color AS themeColor,
-                st.is_coming_soon AS comingSoon,
-                st.coming_soon_message AS comingSoonMessage,
-                icon_file.object_key AS iconObjectKey,
-                banner_file.object_key AS bannerObjectKey,
+                NULL AS themeColor,
+                FALSE AS comingSoon,
+                NULL AS comingSoonMessage,
+                NULL AS iconObjectKey,
+                NULL AS bannerObjectKey,
                 st.sort_order AS sortOrder
             FROM shop_types st
-            LEFT JOIN files icon_file ON icon_file.id = st.icon_file_id
-            LEFT JOIN files banner_file ON banner_file.id = st.banner_file_id
             WHERE st.is_active = 1
             ORDER BY st.sort_order ASC, st.name ASC
             """, nativeQuery = true)
@@ -158,17 +156,15 @@ public interface StorefrontCatalogRepository extends Repository<ShopEntity, Long
     @Query(value = """
             SELECT
                 st.id AS id,
-                COALESCE(st.display_label, st.name) AS name,
+                st.name AS name,
                 st.normalized_name AS normalizedName,
-                st.theme_color AS themeColor,
-                st.is_coming_soon AS comingSoon,
-                st.coming_soon_message AS comingSoonMessage,
-                icon_file.object_key AS iconObjectKey,
-                banner_file.object_key AS bannerObjectKey,
+                NULL AS themeColor,
+                FALSE AS comingSoon,
+                NULL AS comingSoonMessage,
+                NULL AS iconObjectKey,
+                NULL AS bannerObjectKey,
                 st.sort_order AS sortOrder
             FROM shop_types st
-            LEFT JOIN files icon_file ON icon_file.id = st.icon_file_id
-            LEFT JOIN files banner_file ON banner_file.id = st.banner_file_id
             WHERE st.is_active = 1
               AND st.normalized_name = :normalizedName
             LIMIT 1
@@ -178,26 +174,21 @@ public interface StorefrontCatalogRepository extends Repository<ShopEntity, Long
     @Query(value = """
             SELECT
                 sc.id AS id,
-                sc.parent_category_id AS parentCategoryId,
+                NULL AS parentCategoryId,
                 stcm.shop_type_id AS shopTypeId,
-                COALESCE(sc.display_label, sc.name) AS name,
+                sc.name AS name,
                 sc.normalized_name AS normalizedName,
-                sc.theme_color AS themeColor,
-                stcm.is_coming_soon AS comingSoon,
-                stcm.coming_soon_message AS comingSoonMessage,
-                image_file.object_key AS imageObjectKey,
-                COALESCE(NULLIF(stcm.sort_order, 0), sc.sort_order) AS sortOrder
+                NULL AS themeColor,
+                FALSE AS comingSoon,
+                NULL AS comingSoonMessage,
+                NULL AS imageObjectKey,
+                0 AS sortOrder
             FROM shop_type_category_mappings stcm
             INNER JOIN shop_categories sc ON sc.id = stcm.shop_category_id
-            LEFT JOIN files image_file ON image_file.id = sc.image_file_id
             WHERE stcm.is_active = 1
               AND sc.is_active = 1
               AND (:shopTypeId IS NULL OR stcm.shop_type_id = :shopTypeId)
-              AND (
-                    (:parentCategoryId IS NULL AND sc.parent_category_id IS NULL)
-                    OR sc.parent_category_id = :parentCategoryId
-              )
-            ORDER BY COALESCE(NULLIF(stcm.sort_order, 0), sc.sort_order) ASC, sc.name ASC
+            ORDER BY sc.name ASC
             """, nativeQuery = true)
     List<ShopCategoryView> findCategories(
             @Param("shopTypeId") Long shopTypeId,

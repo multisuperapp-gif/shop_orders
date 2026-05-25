@@ -62,4 +62,28 @@ public class InternalFinanceOrderSyncController {
         internalFinanceOrderSyncService.updateOrderState(orderId, request);
         return ApiResponse.success("Shop order state updated.");
     }
+
+    @PostMapping("/{orderId}/inventory/reserve")
+    public ApiResponse<Void> reserveInventory(@PathVariable Long orderId) {
+        internalFinanceOrderSyncService.reserveInventory(orderId);
+        return ApiResponse.success("Shop order inventory reserved.");
+    }
+
+    @PostMapping("/{orderId}/inventory/release")
+    public ApiResponse<Void> releaseInventory(@PathVariable Long orderId) {
+        internalFinanceOrderSyncService.releaseInventory(orderId);
+        return ApiResponse.success("Shop order inventory released.");
+    }
+
+    @PostMapping("/{orderId}/inventory/consume")
+    public ApiResponse<Void> consumeInventory(@PathVariable Long orderId) {
+        internalFinanceOrderSyncService.consumeInventory(orderId);
+        return ApiResponse.success("Shop order inventory consumed.");
+    }
+
+    @PostMapping("/{orderId}/inventory/restock")
+    public ApiResponse<Void> restockInventory(@PathVariable Long orderId) {
+        internalFinanceOrderSyncService.restockInventory(orderId);
+        return ApiResponse.success("Shop order inventory restocked.");
+    }
 }

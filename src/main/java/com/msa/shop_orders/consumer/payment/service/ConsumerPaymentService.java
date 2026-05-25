@@ -5,10 +5,10 @@ import com.msa.shop_orders.consumer.payment.dto.ConsumerPaymentDtos;
 import com.msa.shop_orders.integration.bookingpayment.ShopOrdersBookingPaymentClient;
 import com.msa.shop_orders.integration.bookingpayment.dto.ShopOrdersBookingPaymentApiResponse;
 import com.msa.shop_orders.integration.bookingpayment.dto.ShopOrdersBookingPaymentDtos;
-import com.msa.shop_orders.persistence.entity.OrderEntity;
-import com.msa.shop_orders.persistence.entity.PaymentEntity;
-import com.msa.shop_orders.persistence.repository.OrderRepository;
-import com.msa.shop_orders.persistence.repository.PaymentRepository;
+import com.msa.shop_orders.provider.shop.view.ShopOrderView;
+import com.msa.shop_orders.provider.shop.view.ShopPaymentView;
+import com.msa.shop_orders.provider.shop.view.repository.ShopOrderViewRepository;
+import com.msa.shop_orders.provider.shop.view.repository.ShopPaymentViewRepository;
 import com.msa.shop_orders.security.CurrentUserService;
 import feign.FeignException;
 import org.springframework.http.HttpStatus;
@@ -18,19 +18,19 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 public class ConsumerPaymentService {
     private final CurrentUserService currentUserService;
-    private final PaymentRepository paymentRepository;
-    private final OrderRepository orderRepository;
+    private final ShopPaymentViewRepository shopPaymentViewRepository;
+    private final ShopOrderViewRepository shopOrderViewRepository;
     private final ShopOrdersBookingPaymentClient shopOrdersBookingPaymentClient;
 
     public ConsumerPaymentService(
             CurrentUserService currentUserService,
-            PaymentRepository paymentRepository,
-            OrderRepository orderRepository,
+            ShopPaymentViewRepository shopPaymentViewRepository,
+            ShopOrderViewRepository shopOrderViewRepository,
             ShopOrdersBookingPaymentClient shopOrdersBookingPaymentClient
     ) {
         this.currentUserService = currentUserService;
-        this.paymentRepository = paymentRepository;
-        this.orderRepository = orderRepository;
+        this.shopPaymentViewRepository = shopPaymentViewRepository;
+        this.shopOrderViewRepository = shopOrderViewRepository;
         this.shopOrdersBookingPaymentClient = shopOrdersBookingPaymentClient;
     }
 
@@ -41,6 +41,7 @@ public class ConsumerPaymentService {
         ShopOrdersBookingPaymentDtos.PaymentStatusResponse data = requireData(call(
                 () -> shopOrdersBookingPaymentClient.status(authorizationHeader, userId, paymentCode)
         ));
+        syncLocalPaymentStatus(data);
         return mapStatus(data);
     }
 
@@ -61,6 +62,21 @@ public class ConsumerPaymentService {
                                 request == null ? null : request.gatewayName()
                         )
                 )
+        ));
+        syncLocalPaymentStatus(new ShopOrdersBookingPaymentDtos.PaymentStatusResponse(
+                data.paymentId(),
+                data.paymentCode(),
+                data.payableType(),
+                data.payableId(),
+                data.paymentStatus(),
+                data.amount(),
+                data.currencyCode(),
+                data.gatewayName(),
+                data.gatewayOrderId(),
+                data.paymentStatus(),
+                null,
+                null,
+                null
         ));
         return new ConsumerPaymentDtos.PaymentInitiateData(
                 data.paymentId(),
@@ -96,6 +112,7 @@ public class ConsumerPaymentService {
                         )
                 )
         ));
+        syncLocalPaymentStatus(data);
         return mapStatus(data);
     }
 
@@ -119,16 +136,17 @@ public class ConsumerPaymentService {
                         )
                 )
         ));
+        syncLocalPaymentStatus(data);
         return mapStatus(data);
     }
 
     private void requireShopOrderPaymentOwnership(Long userId, String paymentCode) {
-        PaymentEntity payment = paymentRepository.findByPaymentCode(paymentCode)
+        ShopPaymentView payment = shopPaymentViewRepository.findByPaymentCode(paymentCode)
                 .orElseThrow(() -> new BusinessException("PAYMENT_NOT_FOUND", "Payment not found.", HttpStatus.NOT_FOUND));
         if (!"SHOP_ORDER".equalsIgnoreCase(payment.getPayableType()) || !userId.equals(payment.getPayerUserId())) {
             throw new BusinessException("PAYMENT_NOT_FOUND", "Payment not found.", HttpStatus.NOT_FOUND);
         }
-        OrderEntity order = orderRepository.findByIdAndUserId(payment.getPayableId(), userId)
+        ShopOrderView order = shopOrderViewRepository.findById(payment.getPayableId())
                 .orElseThrow(() -> new BusinessException("PAYMENT_NOT_FOUND", "Payment not found.", HttpStatus.NOT_FOUND));
         if (!userId.equals(order.getUserId())) {
             throw new BusinessException("PAYMENT_NOT_FOUND", "Payment not found.", HttpStatus.NOT_FOUND);
@@ -151,6 +169,39 @@ public class ConsumerPaymentService {
                 data.initiatedAt(),
                 data.completedAt()
         );
+    }
+
+    private void syncLocalPaymentStatus(ShopOrdersBookingPaymentDtos.PaymentStatusResponse data) {
+        if (data == null || data.paymentCode() == null || data.paymentCode().isBlank()) {
+            return;
+        }
+        ShopPaymentView payment = shopPaymentViewRepository.findByPaymentCode(data.paymentCode())
+                .orElseGet(ShopPaymentView::new);
+        payment.setPaymentId(data.paymentId());
+        payment.setPaymentCode(data.paymentCode());
+        payment.setPayableType(data.payableType());
+        payment.setPayableId(data.payableId());
+        payment.setPaymentStatus(data.paymentStatus());
+        payment.setAmount(data.amount());
+        payment.setCurrencyCode(data.currencyCode());
+        payment.setGatewayName(data.gatewayName());
+        payment.setGatewayOrderId(data.gatewayOrderId());
+        payment.setLatestAttemptStatus(data.latestAttemptStatus());
+        payment.setLatestGatewayTransactionId(data.latestGatewayTransactionId());
+        payment.setInitiatedAt(data.initiatedAt());
+        payment.setCompletedAt(data.completedAt());
+        shopPaymentViewRepository.save(payment);
+
+        if (!"SHOP_ORDER".equalsIgnoreCase(data.payableType()) || data.payableId() == null) {
+            return;
+        }
+        shopOrderViewRepository.findById(data.payableId()).ifPresent(order -> {
+            order.setPaymentStatus(data.paymentStatus());
+            if (data.paymentCode() != null && !data.paymentCode().isBlank()) {
+                order.setPaymentCode(data.paymentCode());
+            }
+            shopOrderViewRepository.save(order);
+        });
     }
 
     private static <T> T requireData(ShopOrdersBookingPaymentApiResponse<T> response) {

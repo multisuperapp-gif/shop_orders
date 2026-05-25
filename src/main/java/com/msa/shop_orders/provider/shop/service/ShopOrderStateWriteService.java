@@ -1,42 +1,35 @@
 package com.msa.shop_orders.provider.shop.service;
 
-import com.msa.shop_orders.persistence.entity.OrderEntity;
-import com.msa.shop_orders.persistence.entity.OrderStatusHistoryEntity;
-import com.msa.shop_orders.persistence.repository.OrderRepository;
-import com.msa.shop_orders.persistence.repository.OrderStatusHistoryRepository;
 import com.msa.shop_orders.provider.shop.view.ShopOrderView;
+import com.msa.shop_orders.provider.shop.view.repository.ShopOrderViewRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 
 @Service
 public class ShopOrderStateWriteService {
-    private final OrderRepository orderRepository;
-    private final OrderStatusHistoryRepository orderStatusHistoryRepository;
-    private final ShopRuntimeViewService shopRuntimeViewService;
-    private final ShopRuntimeSyncService shopRuntimeSyncService;
+    private final ShopOrderViewRepository shopOrderViewRepository;
 
     public ShopOrderStateWriteService(
-            OrderRepository orderRepository,
-            OrderStatusHistoryRepository orderStatusHistoryRepository,
-            ShopRuntimeViewService shopRuntimeViewService,
-            ShopRuntimeSyncService shopRuntimeSyncService
+            ShopOrderViewRepository shopOrderViewRepository
     ) {
-        this.orderRepository = orderRepository;
-        this.orderStatusHistoryRepository = orderStatusHistoryRepository;
-        this.shopRuntimeViewService = shopRuntimeViewService;
-        this.shopRuntimeSyncService = shopRuntimeSyncService;
+        this.shopOrderViewRepository = shopOrderViewRepository;
     }
 
-    public ShopOrderView applyStateUpdate(OrderEntity order, OrderStateMutation mutation) {
-        if (order == null || mutation == null) {
+    public ShopOrderView applyStateUpdate(Long orderId, OrderStateMutation mutation) {
+        if (orderId == null || mutation == null) {
+            return null;
+        }
+        ShopOrderView order = shopOrderViewRepository.findById(orderId).orElse(null);
+        if (order == null) {
             return null;
         }
 
         String oldStatus = order.getOrderStatus();
         boolean changed = false;
-
         if (mutation.paymentStatus() != null && !mutation.paymentStatus().isBlank()) {
             order.setPaymentStatus(mutation.paymentStatus().trim().toUpperCase());
             changed = true;
@@ -49,27 +42,23 @@ public class ShopOrderStateWriteService {
             order.setOrderStatus(requestedStatus);
             changed = true;
         }
-
         if (!changed) {
             return null;
         }
 
-        orderRepository.save(order);
+        order.setUpdatedAt(LocalDateTime.now());
         if (requestedStatus != null && !Objects.equals(oldStatus, requestedStatus)) {
-            OrderStatusHistoryEntity history = new OrderStatusHistoryEntity();
-            history.setOrderId(order.getId());
+            ShopOrderView.TimelineEvent history = new ShopOrderView.TimelineEvent();
             history.setOldStatus(oldStatus);
             history.setNewStatus(requestedStatus);
-            history.setChangedByUserId(mutation.changedByUserId());
             history.setReason(mutation.reason());
-            history.setRefundPolicyApplied(mutation.refundPolicyApplied());
             history.setChangedAt(LocalDateTime.now());
-            orderStatusHistoryRepository.save(history);
+            List<ShopOrderView.TimelineEvent> timeline = new ArrayList<>(order.getTimeline() == null ? List.of() : order.getTimeline());
+            timeline.add(history);
+            order.setTimeline(timeline);
         }
-
-        ShopOrderView orderView = shopRuntimeViewService.buildOrderViewById(order.getId());
-        shopRuntimeSyncService.syncOrderAfterCommit(order.getId(), orderView);
-        return orderView;
+        shopOrderViewRepository.save(order);
+        return order;
     }
 
     public record OrderStateMutation(

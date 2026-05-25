@@ -3,58 +3,40 @@ package com.msa.shop_orders.provider.shop.service;
 import com.msa.shop_orders.provider.shop.view.ShopOrderView;
 import com.msa.shop_orders.provider.shop.view.ShopShellView;
 import com.msa.shop_orders.provider.shop.view.repository.ShopOrderViewRepository;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 @Service
 public class ShopRuntimeSyncService {
-    private final ShopRuntimeViewService shopRuntimeViewService;
     private final ShopShellViewService shopShellViewService;
     private final ShopOrderViewRepository shopOrderViewRepository;
-    private final boolean viewStoreEnabled;
 
     public ShopRuntimeSyncService(
-            ShopRuntimeViewService shopRuntimeViewService,
             ShopShellViewService shopShellViewService,
-            ShopOrderViewRepository shopOrderViewRepository,
-            @Value("${mongodb.enabled:false}") boolean viewStoreEnabled
+            ShopOrderViewRepository shopOrderViewRepository
     ) {
-        this.shopRuntimeViewService = shopRuntimeViewService;
         this.shopShellViewService = shopShellViewService;
         this.shopOrderViewRepository = shopOrderViewRepository;
-        this.viewStoreEnabled = viewStoreEnabled;
     }
 
     public void syncProductsForShopAfterCommit(Long shopId) {
-        if (shopId == null) {
-            return;
-        }
-        runAfterCommit(() -> shopShellViewService.findByShopId(shopId).ifPresent(shopRuntimeViewService::syncProductsForShop));
+        // Shop runtime source of truth is Mongo; there is no SQL rebuild step here anymore.
     }
 
     public void syncProductAfterCommit(Long shopId, Long productId) {
-        if (shopId == null || productId == null) {
-            return;
-        }
-        runAfterCommit(() -> shopShellViewService.findByShopId(shopId)
-                .ifPresent(shellView -> shopRuntimeViewService.syncProductById(shellView, productId)));
+        // Shop runtime source of truth is Mongo; there is no SQL rebuild step here anymore.
     }
 
     public void syncOrderAfterCommit(Long orderId) {
-        if (orderId == null) {
-            return;
-        }
-        runAfterCommit(() -> shopRuntimeViewService.syncOrderById(orderId));
+        // Shop runtime source of truth is Mongo; there is no SQL rebuild step here anymore.
     }
 
     public void syncOrderAfterCommit(Long orderId, ShopOrderView orderView) {
         if (orderId == null) {
             return;
         }
-        if (!viewStoreEnabled || orderView == null || orderView.getOrderId() == null) {
-            syncOrderAfterCommit(orderId);
+        if (orderView == null || orderView.getOrderId() == null) {
             return;
         }
         runAfterCommit(() -> shopOrderViewRepository.save(orderView));

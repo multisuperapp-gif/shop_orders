@@ -6,56 +6,44 @@ import com.msa.shop_orders.provider.shop.view.ShopShellView;
 import com.msa.shop_orders.provider.shop.view.repository.ShopShellViewRepository;
 import java.math.BigDecimal;
 import java.util.Optional;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 @Service
 public class ShopShellViewService {
     private final ShopShellViewRepository shopShellViewRepository;
     private final ShopRepository shopRepository;
-    private final boolean viewStoreEnabled;
 
     public ShopShellViewService(
             ShopShellViewRepository shopShellViewRepository,
-            ShopRepository shopRepository,
-            @Value("${mongodb.enabled:false}") boolean viewStoreEnabled
+            ShopRepository shopRepository
     ) {
         this.shopShellViewRepository = shopShellViewRepository;
         this.shopRepository = shopRepository;
-        this.viewStoreEnabled = viewStoreEnabled;
     }
 
     public Optional<ShopShellView> findCurrentApprovedShop(Long ownerUserId) {
         if (ownerUserId == null) {
             return Optional.empty();
         }
-        Optional<ShopShellView> sqlView = shopRepository
+        return shopRepository
                 .findFirstByOwnerUserIdAndApprovalStatusIgnoreCaseOrderByIdDesc(
                         ownerUserId,
                         "APPROVED"
                 )
                 .or(() -> shopRepository.findFirstByOwnerUserIdOrderByIdDesc(ownerUserId))
                 .map(this::toShellView);
-        if (sqlView.isPresent() || !viewStoreEnabled) {
-            return sqlView;
-        }
-        return shopShellViewRepository.findFirstByOwnerUserId(ownerUserId);
     }
 
     public Optional<ShopShellView> findByShopId(Long shopId) {
         if (shopId == null) {
             return Optional.empty();
         }
-        Optional<ShopShellView> sqlView = shopRepository.findById(shopId)
+        return shopRepository.findById(shopId)
                 .map(this::toShellView);
-        if (sqlView.isPresent() || !viewStoreEnabled) {
-            return sqlView;
-        }
-        return shopShellViewRepository.findById(shopId);
     }
 
     public void syncShellView(ShopShellView document) {
-        if (!viewStoreEnabled || document == null || document.getShopId() == null) {
+        if (document == null || document.getShopId() == null) {
             return;
         }
         shopShellViewRepository.save(document);

@@ -3,29 +3,13 @@ package com.msa.shop_orders.internal.finance.order.service;
 import com.msa.shop_orders.internal.finance.order.dto.InternalFinanceOrderDtos;
 import com.msa.shop_orders.consumer.order.service.ShopOrderWriteService;
 import com.msa.shop_orders.provider.shop.service.ShopOrderStateWriteService;
-import com.msa.shop_orders.persistence.entity.InventoryEntity;
-import com.msa.shop_orders.persistence.entity.OrderEntity;
-import com.msa.shop_orders.persistence.entity.OrderItemEntity;
-import com.msa.shop_orders.persistence.entity.ProductEntity;
-import com.msa.shop_orders.persistence.entity.ProductVariantEntity;
-import com.msa.shop_orders.persistence.entity.ShopDeliveryRuleEntity;
-import com.msa.shop_orders.persistence.entity.ShopLocationEntity;
-import com.msa.shop_orders.persistence.entity.UserAddressEntity;
-import com.msa.shop_orders.persistence.repository.InventoryRepository;
-import com.msa.shop_orders.persistence.repository.OrderItemRepository;
-import com.msa.shop_orders.persistence.repository.OrderRepository;
-import com.msa.shop_orders.persistence.repository.ProductRepository;
-import com.msa.shop_orders.persistence.repository.ProductVariantRepository;
-import com.msa.shop_orders.persistence.repository.ShopDeliveryRuleRepository;
-import com.msa.shop_orders.persistence.repository.ShopLocationRepository;
-import com.msa.shop_orders.persistence.repository.UserAddressRepository;
 import com.msa.shop_orders.provider.shop.service.ShopInventoryMovementService;
 import com.msa.shop_orders.provider.shop.service.ShopRuntimeSyncService;
 import com.msa.shop_orders.provider.shop.service.ShopRuntimeViewService;
 import com.msa.shop_orders.provider.shop.view.ShopOrderView;
-import com.msa.shop_orders.provider.shop.view.ShopShellView;
+import com.msa.shop_orders.provider.shop.view.ShopProductView;
 import com.msa.shop_orders.provider.shop.view.repository.ShopOrderViewRepository;
-import com.msa.shop_orders.provider.shop.view.repository.ShopShellViewRepository;
+import com.msa.shop_orders.provider.shop.view.repository.ShopProductViewRepository;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,64 +18,37 @@ import com.msa.shop_orders.common.exception.BusinessException;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.UUID;
 
 @Service
 public class InternalFinanceOrderSyncService {
-    private final OrderRepository orderRepository;
-    private final OrderItemRepository orderItemRepository;
     private final ShopOrderWriteService shopOrderWriteService;
     private final ShopOrderStateWriteService shopOrderStateWriteService;
-    private final ProductRepository productRepository;
-    private final ProductVariantRepository productVariantRepository;
-    private final InventoryRepository inventoryRepository;
-    private final ShopLocationRepository shopLocationRepository;
-    private final ShopDeliveryRuleRepository shopDeliveryRuleRepository;
-    private final UserAddressRepository userAddressRepository;
     private final ShopRuntimeViewService shopRuntimeViewService;
     private final ShopRuntimeSyncService shopRuntimeSyncService;
     private final ShopInventoryMovementService shopInventoryMovementService;
     private final ShopOrderViewRepository shopOrderViewRepository;
-    private final ShopShellViewRepository shopShellViewRepository;
+    private final ShopProductViewRepository shopProductViewRepository;
 
     public InternalFinanceOrderSyncService(
-            OrderRepository orderRepository,
-            OrderItemRepository orderItemRepository,
             ShopOrderWriteService shopOrderWriteService,
             ShopOrderStateWriteService shopOrderStateWriteService,
-            ProductRepository productRepository,
-            ProductVariantRepository productVariantRepository,
-            InventoryRepository inventoryRepository,
-            ShopLocationRepository shopLocationRepository,
-            ShopDeliveryRuleRepository shopDeliveryRuleRepository,
-            UserAddressRepository userAddressRepository,
             ShopRuntimeViewService shopRuntimeViewService,
             ShopRuntimeSyncService shopRuntimeSyncService,
             ShopInventoryMovementService shopInventoryMovementService,
             ShopOrderViewRepository shopOrderViewRepository,
-            ShopShellViewRepository shopShellViewRepository
+            ShopProductViewRepository shopProductViewRepository
     ) {
-        this.orderRepository = orderRepository;
-        this.orderItemRepository = orderItemRepository;
         this.shopOrderWriteService = shopOrderWriteService;
         this.shopOrderStateWriteService = shopOrderStateWriteService;
-        this.productRepository = productRepository;
-        this.productVariantRepository = productVariantRepository;
-        this.inventoryRepository = inventoryRepository;
-        this.shopLocationRepository = shopLocationRepository;
-        this.shopDeliveryRuleRepository = shopDeliveryRuleRepository;
-        this.userAddressRepository = userAddressRepository;
         this.shopRuntimeViewService = shopRuntimeViewService;
         this.shopRuntimeSyncService = shopRuntimeSyncService;
         this.shopInventoryMovementService = shopInventoryMovementService;
         this.shopOrderViewRepository = shopOrderViewRepository;
-        this.shopShellViewRepository = shopShellViewRepository;
+        this.shopProductViewRepository = shopProductViewRepository;
     }
 
     @Transactional
@@ -227,7 +184,9 @@ public class InternalFinanceOrderSyncService {
         if (orderId == null) {
             throw new BusinessException("ORDER_NOT_FOUND", "Order not found.", HttpStatus.NOT_FOUND);
         }
-        return orderItemRepository.findByOrderIdOrderByIdAsc(orderId).stream()
+        ShopOrderView order = shopOrderViewRepository.findById(orderId)
+                .orElseThrow(() -> new BusinessException("ORDER_NOT_FOUND", "Order not found.", HttpStatus.NOT_FOUND));
+        return (order.getItems() == null ? List.<ShopOrderView.Item>of() : order.getItems()).stream()
                 .map(item -> new InternalFinanceOrderDtos.OrderItemData(
                         item.getProductId(),
                         item.getVariantId(),
@@ -243,10 +202,11 @@ public class InternalFinanceOrderSyncService {
         if (request == null) {
             return;
         }
-        OrderEntity order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new BusinessException("ORDER_NOT_FOUND", "Order not found.", HttpStatus.NOT_FOUND));
+        if (shopOrderViewRepository.findById(orderId).isEmpty()) {
+            throw new BusinessException("ORDER_NOT_FOUND", "Order not found.", HttpStatus.NOT_FOUND);
+        }
         shopOrderStateWriteService.applyStateUpdate(
-                order,
+                orderId,
                 new ShopOrderStateWriteService.OrderStateMutation(
                         request.orderStatus(),
                         request.paymentStatus(),
@@ -255,6 +215,26 @@ public class InternalFinanceOrderSyncService {
                         request.refundPolicyApplied()
                 )
         );
+    }
+
+    @Transactional
+    public void reserveInventory(Long orderId) {
+        mutateInventory(orderId, InventoryMutation.RESERVE);
+    }
+
+    @Transactional
+    public void releaseInventory(Long orderId) {
+        mutateInventory(orderId, InventoryMutation.RELEASE);
+    }
+
+    @Transactional
+    public void consumeInventory(Long orderId) {
+        mutateInventory(orderId, InventoryMutation.CONSUME);
+    }
+
+    @Transactional
+    public void restockInventory(Long orderId) {
+        mutateInventory(orderId, InventoryMutation.RESTOCK);
     }
 
     private void validateItems(List<InternalFinanceOrderDtos.CreateOrderItemRequest> items) {
@@ -266,5 +246,157 @@ public class InternalFinanceOrderSyncService {
                 throw new BusinessException("ORDER_INVALID", "Order item is incomplete.", HttpStatus.BAD_REQUEST);
             }
         }
+    }
+
+    private void mutateInventory(Long orderId, InventoryMutation mutation) {
+        ShopOrderView order = shopOrderViewRepository.findById(orderId)
+                .orElseThrow(() -> new BusinessException("ORDER_NOT_FOUND", "Order not found.", HttpStatus.NOT_FOUND));
+        List<ShopOrderView.Item> items = order.getItems() == null ? List.of() : order.getItems();
+        if (items.isEmpty()) {
+            return;
+        }
+        List<Long> variantIds = items.stream()
+                .map(ShopOrderView.Item::getVariantId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+        Map<Long, ProductVariantSelection> selectionsByVariantId = new LinkedHashMap<>();
+        for (ShopProductView product : shopProductViewRepository.findByVariantsVariantIdIn(variantIds)) {
+            for (ShopProductView.Variant variant : safeVariants(product)) {
+                if (variant.getVariantId() != null && variantIds.contains(variant.getVariantId())) {
+                    selectionsByVariantId.put(variant.getVariantId(), new ProductVariantSelection(product, variant));
+                }
+            }
+        }
+        if (selectionsByVariantId.size() != variantIds.size()) {
+            throw new BusinessException("PRODUCT_NOT_FOUND", "One or more ordered variants are no longer available.", HttpStatus.NOT_FOUND);
+        }
+        for (ShopOrderView.Item item : items) {
+            if (item.getVariantId() == null || item.getQuantity() == null || item.getQuantity() < 1) {
+                throw new BusinessException("ORDER_INVALID", "Order item is incomplete.", HttpStatus.BAD_REQUEST);
+            }
+            ProductVariantSelection selection = selectionsByVariantId.get(item.getVariantId());
+            validateInventoryMutation(selection.product(), selection.variant(), item.getQuantity(), mutation);
+        }
+
+        Map<Long, ShopProductView> mutatedProductsById = new LinkedHashMap<>();
+        for (ShopOrderView.Item item : items) {
+            ProductVariantSelection selection = selectionsByVariantId.get(item.getVariantId());
+            applyInventoryMutation(selection.variant(), item.getQuantity(), mutation);
+            updateProductSummaryFromVariants(selection.product());
+            mutatedProductsById.put(selection.product().getProductId(), selection.product());
+        }
+        if (!mutatedProductsById.isEmpty()) {
+            shopProductViewRepository.saveAll(mutatedProductsById.values());
+        }
+    }
+
+    private void validateInventoryMutation(
+            ShopProductView product,
+            ShopProductView.Variant variant,
+            Integer quantity,
+            InventoryMutation mutation
+    ) {
+        if (product == null || variant == null) {
+            throw new BusinessException("PRODUCT_NOT_FOUND", "Selected product is no longer available.", HttpStatus.NOT_FOUND);
+        }
+        int available = defaultInteger(variant.getQuantityAvailable());
+        int reserved = defaultInteger(variant.getReservedQuantity());
+        int availableToReserve = available - reserved;
+        switch (mutation) {
+            case RESERVE -> {
+                if (!product.isActive() || !variant.isActive()) {
+                    throw new BusinessException("PRODUCT_INACTIVE", "Selected product is inactive.", HttpStatus.BAD_REQUEST);
+                }
+                if (availableToReserve < quantity) {
+                    throw new BusinessException("OUT_OF_STOCK", "Requested quantity is not available for variant " + variant.getVariantId() + ".", HttpStatus.BAD_REQUEST);
+                }
+                String inventoryStatus = variant.getInventoryStatus();
+                if (!"IN_STOCK".equalsIgnoreCase(inventoryStatus) && !"LOW_STOCK".equalsIgnoreCase(inventoryStatus)) {
+                    throw new BusinessException("OUT_OF_STOCK", "Selected item is out of stock.", HttpStatus.BAD_REQUEST);
+                }
+            }
+            case CONSUME -> {
+                if (reserved < quantity || available < quantity) {
+                    throw new BusinessException("OUT_OF_STOCK", "Reserved inventory could not be committed for variant " + variant.getVariantId() + ".", HttpStatus.BAD_REQUEST);
+                }
+            }
+            case RELEASE, RESTOCK -> {
+                // no extra validation needed
+            }
+        }
+    }
+
+    private void applyInventoryMutation(ShopProductView.Variant variant, Integer quantity, InventoryMutation mutation) {
+        int available = defaultInteger(variant.getQuantityAvailable());
+        int reserved = defaultInteger(variant.getReservedQuantity());
+        switch (mutation) {
+            case RESERVE -> variant.setReservedQuantity(reserved + quantity);
+            case RELEASE -> variant.setReservedQuantity(Math.max(0, reserved - quantity));
+            case CONSUME -> {
+                variant.setQuantityAvailable(Math.max(0, available - quantity));
+                variant.setReservedQuantity(Math.max(0, reserved - quantity));
+            }
+            case RESTOCK -> variant.setQuantityAvailable(available + quantity);
+        }
+    }
+
+    private void updateProductSummaryFromVariants(ShopProductView product) {
+        ShopProductView.Variant primary = safeVariants(product).stream()
+                .filter(ShopProductView.Variant::isDefaultVariant)
+                .findFirst()
+                .orElseGet(() -> safeVariants(product).stream().findFirst().orElse(null));
+        if (primary == null) {
+            return;
+        }
+        product.setVariantName(primary.getVariantName());
+        product.setUnitValue(primary.getUnitValue());
+        product.setUnitType(primary.getUnitType());
+        product.setWeightInGrams(primary.getWeightInGrams());
+        product.setMrp(primary.getMrp());
+        product.setSellingPrice(primary.getSellingPrice());
+        product.setQuantityAvailable(primary.getQuantityAvailable());
+        product.setReservedQuantity(primary.getReservedQuantity());
+        product.setReorderLevel(primary.getReorderLevel());
+        product.setInventoryStatus(resolveInventoryStatus(
+                primary.getQuantityAvailable(),
+                primary.getReservedQuantity(),
+                primary.getReorderLevel(),
+                product.isActive() && primary.isActive()
+        ));
+        primary.setInventoryStatus(product.getInventoryStatus());
+        product.setUpdatedAt(LocalDateTime.now());
+    }
+
+    private String resolveInventoryStatus(Integer quantityAvailable, Integer reservedQuantity, Integer reorderLevel, boolean active) {
+        if (!active) {
+            return "DISCONTINUED";
+        }
+        int available = defaultInteger(quantityAvailable) - defaultInteger(reservedQuantity);
+        if (available <= 0) {
+            return "OUT_OF_STOCK";
+        }
+        if (reorderLevel != null && available <= reorderLevel) {
+            return "LOW_STOCK";
+        }
+        return "IN_STOCK";
+    }
+
+    private List<ShopProductView.Variant> safeVariants(ShopProductView product) {
+        return product.getVariants() == null ? List.of() : product.getVariants();
+    }
+
+    private int defaultInteger(Integer value) {
+        return value == null ? 0 : value;
+    }
+
+    private record ProductVariantSelection(ShopProductView product, ShopProductView.Variant variant) {
+    }
+
+    private enum InventoryMutation {
+        RESERVE,
+        RELEASE,
+        CONSUME,
+        RESTOCK
     }
 }

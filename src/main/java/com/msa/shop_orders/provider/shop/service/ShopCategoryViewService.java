@@ -1,54 +1,27 @@
 package com.msa.shop_orders.provider.shop.service;
 
-import com.msa.shop_orders.persistence.entity.ShopCategoryEntity;
-import com.msa.shop_orders.persistence.entity.ShopInventoryCategoryEntity;
-import com.msa.shop_orders.persistence.entity.ShopTypeCategoryMappingEntity;
-import com.msa.shop_orders.persistence.repository.ShopCategoryRepository;
-import com.msa.shop_orders.persistence.repository.ShopInventoryCategoryRepository;
-import com.msa.shop_orders.persistence.repository.ShopTypeCategoryMappingRepository;
 import com.msa.shop_orders.provider.shop.view.ShopCategoryView;
 import com.msa.shop_orders.provider.shop.view.repository.ShopCategoryViewRepository;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
-import java.util.Set;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 @Service
 public class ShopCategoryViewService {
     private final ShopCategoryViewRepository shopCategoryViewRepository;
-    private final ShopCategoryRepository shopCategoryRepository;
-    private final ShopTypeCategoryMappingRepository shopTypeCategoryMappingRepository;
-    private final ShopInventoryCategoryRepository shopInventoryCategoryRepository;
-    private final boolean viewStoreEnabled;
 
     public ShopCategoryViewService(
-            ShopCategoryViewRepository shopCategoryViewRepository,
-            ShopCategoryRepository shopCategoryRepository,
-            ShopTypeCategoryMappingRepository shopTypeCategoryMappingRepository,
-            ShopInventoryCategoryRepository shopInventoryCategoryRepository,
-            @Value("${mongodb.enabled:false}") boolean viewStoreEnabled
+            ShopCategoryViewRepository shopCategoryViewRepository
     ) {
         this.shopCategoryViewRepository = shopCategoryViewRepository;
-        this.shopCategoryRepository = shopCategoryRepository;
-        this.shopTypeCategoryMappingRepository = shopTypeCategoryMappingRepository;
-        this.shopInventoryCategoryRepository = shopInventoryCategoryRepository;
-        this.viewStoreEnabled = viewStoreEnabled;
     }
 
     public List<ShopCategoryView> findAllowedTypeCategories(Long shopTypeId) {
         if (shopTypeId == null) {
             return List.of();
         }
-        if (!viewStoreEnabled) {
-            return loadAllowedTypeCategoriesFromSql(shopTypeId);
-        }
-        ensureTypeCategoriesSeeded(shopTypeId);
         return shopCategoryViewRepository.findByShopTypeIdAndShopIdIsNullAndEnabledTrue(shopTypeId).stream()
                 .sorted(categoryComparator())
                 .toList();
@@ -64,10 +37,6 @@ public class ShopCategoryViewService {
         if (shopId == null) {
             return List.of();
         }
-        if (!viewStoreEnabled) {
-            return loadShopCategoriesFromSql(shopId, shopTypeId);
-        }
-        ensureShopCategoriesSeeded(shopId, shopTypeId);
         return shopCategoryViewRepository.findByShopId(shopId).stream()
                 .sorted(categoryComparator())
                 .toList();
@@ -86,135 +55,62 @@ public class ShopCategoryViewService {
         if (categoryId == null) {
             return Optional.empty();
         }
-        return findShopCategories(shopId, shopTypeId).stream()
-                .filter(item -> categoryId.equals(item.getCategoryId()))
-                .findFirst();
+        return shopCategoryViewRepository.findByShopIdAndCategoryId(shopId, categoryId);
     }
 
     public Optional<ShopCategoryView> findAllowedTypeCategory(Long shopTypeId, Long categoryId) {
         if (categoryId == null) {
             return Optional.empty();
         }
-        return findAllowedTypeCategories(shopTypeId).stream()
-                .filter(item -> categoryId.equals(item.getCategoryId()))
-                .findFirst();
+        return shopCategoryViewRepository.findByShopTypeIdAndShopIdIsNullAndCategoryId(shopTypeId, categoryId);
+    }
+
+    public Optional<ShopCategoryView> findTypeCategoryByNormalizedName(String normalizedName) {
+        if (normalizedName == null || normalizedName.isBlank()) {
+            return Optional.empty();
+        }
+        return shopCategoryViewRepository.findFirstByShopIdIsNullAndNormalizedNameIgnoreCase(normalizedName);
     }
 
     public boolean isEnabledShopCategory(Long shopId, Long shopTypeId, Long categoryId) {
         return findEnabledShopCategory(shopId, shopTypeId, categoryId).isPresent();
     }
 
-    public void syncTypeCategory(Long shopTypeId, ShopCategoryEntity categoryEntity) {
-        if (!viewStoreEnabled || shopTypeId == null || categoryEntity == null) {
+    public void upsertTypeCategory(Long shopTypeId, Long categoryId, String name, String normalizedName, boolean enabled) {
+        if (shopTypeId == null || categoryId == null) {
             return;
         }
-        shopCategoryViewRepository.save(toTypeDocument(shopTypeId, categoryEntity));
-    }
-
-    public void syncShopCategory(Long shopId, Long shopTypeId, ShopCategoryEntity categoryEntity, boolean enabled) {
-        if (!viewStoreEnabled || shopId == null || categoryEntity == null) {
-            return;
-        }
-        ShopCategoryView document = toShopDocument(shopId, shopTypeId, categoryEntity);
-        document.setEnabled(enabled);
+        ShopCategoryView document = shopCategoryViewRepository
+                .findByShopTypeIdAndShopIdIsNullAndCategoryId(shopTypeId, categoryId)
+                .orElseGet(ShopCategoryView::new);
+        populate(document, "type:" + shopTypeId + ":" + categoryId, categoryId, shopTypeId, null, name, normalizedName, enabled);
         shopCategoryViewRepository.save(document);
     }
 
-    private void ensureTypeCategoriesSeeded(Long shopTypeId) {
-        long existing = shopCategoryViewRepository.countByShopTypeIdAndShopIdIsNull(shopTypeId);
-        if (existing > 0) {
+    public void upsertShopCategory(Long shopId, Long shopTypeId, Long categoryId, String name, String normalizedName, boolean enabled) {
+        if (shopId == null || categoryId == null) {
             return;
         }
-        List<ShopCategoryView> documents = loadAllowedTypeCategoriesFromSql(shopTypeId);
-        if (!documents.isEmpty()) {
-            shopCategoryViewRepository.saveAll(documents);
-        }
+        ShopCategoryView document = shopCategoryViewRepository.findByShopIdAndCategoryId(shopId, categoryId)
+                .orElseGet(ShopCategoryView::new);
+        populate(document, "shop:" + shopId + ":" + categoryId, categoryId, shopTypeId, shopId, name, normalizedName, enabled);
+        shopCategoryViewRepository.save(document);
     }
 
-    private void ensureShopCategoriesSeeded(Long shopId, Long shopTypeId) {
-        long existing = shopCategoryViewRepository.countByShopId(shopId);
-        if (existing > 0) {
-            return;
-        }
-        List<ShopCategoryView> documents = loadShopCategoriesFromSql(shopId, shopTypeId);
-        if (!documents.isEmpty()) {
-            shopCategoryViewRepository.saveAll(documents);
-        }
-    }
-
-    private List<ShopCategoryView> loadAllowedTypeCategoriesFromSql(Long shopTypeId) {
-        Set<Long> categoryIds = shopTypeCategoryMappingRepository.findByShopTypeIdAndActiveTrueOrderByIdAsc(shopTypeId).stream()
-                .map(ShopTypeCategoryMappingEntity::getShopCategoryId)
-                .collect(Collectors.toSet());
-        if (categoryIds.isEmpty()) {
-            return List.of();
-        }
-        return shopCategoryRepository.findAllById(categoryIds).stream()
-                .filter(ShopCategoryEntity::isActive)
-                .map(category -> toTypeDocument(shopTypeId, category))
-                .sorted(categoryComparator())
-                .toList();
-    }
-
-    private List<ShopCategoryView> loadShopCategoriesFromSql(Long shopId, Long shopTypeId) {
-        List<ShopInventoryCategoryEntity> mappings = shopInventoryCategoryRepository.findByShopIdOrderByIdAsc(shopId);
-        if (mappings.isEmpty()) {
-            return List.of();
-        }
-        Map<Long, ShopCategoryEntity> categoriesById = shopCategoryRepository.findAllById(
-                        mappings.stream().map(ShopInventoryCategoryEntity::getShopCategoryId).toList())
-                .stream()
-                .filter(ShopCategoryEntity::isActive)
-                .collect(Collectors.toMap(ShopCategoryEntity::getId, Function.identity()));
-        return mappings.stream()
-                .map(mapping -> {
-                    ShopCategoryEntity category = categoriesById.get(mapping.getShopCategoryId());
-                    if (category == null) {
-                        return null;
-                    }
-                    ShopCategoryView document = toShopDocument(shopId, shopTypeId, category);
-                    document.setEnabled(mapping.isEnabled());
-                    return document;
-                })
-                .filter(java.util.Objects::nonNull)
-                .sorted(categoryComparator())
-                .toList();
-    }
-
-    private ShopCategoryView toTypeDocument(Long shopTypeId, ShopCategoryEntity categoryEntity) {
-        ShopCategoryView document = new ShopCategoryView();
-        document.setId("type:" + shopTypeId + ":" + categoryEntity.getId());
-        document.setCategoryId(categoryEntity.getId());
+    private void populate(ShopCategoryView document, String id, Long categoryId, Long shopTypeId, Long shopId, String name, String normalizedName, boolean enabled) {
+        document.setId(id);
+        document.setCategoryId(categoryId);
         document.setParentCategoryId(null);
         document.setShopTypeId(shopTypeId);
-        document.setName(categoryEntity.getName());
-        document.setNormalizedName(categoryEntity.getNormalizedName());
-        document.setThemeColor(null);
-        document.setComingSoon(false);
-        document.setComingSoonMessage(null);
-        document.setImageObjectKey(null);
-        document.setSortOrder(0);
-        document.setShopId(null);
-        document.setEnabled(true);
-        return document;
-    }
-
-    private ShopCategoryView toShopDocument(Long shopId, Long shopTypeId, ShopCategoryEntity categoryEntity) {
-        ShopCategoryView document = new ShopCategoryView();
-        document.setId("shop:" + shopId + ":" + categoryEntity.getId());
-        document.setCategoryId(categoryEntity.getId());
-        document.setParentCategoryId(null);
-        document.setShopTypeId(shopTypeId);
-        document.setName(categoryEntity.getName());
-        document.setNormalizedName(categoryEntity.getNormalizedName());
+        document.setName(name);
+        document.setNormalizedName(normalizedName);
         document.setThemeColor(null);
         document.setComingSoon(false);
         document.setComingSoonMessage(null);
         document.setImageObjectKey(null);
         document.setSortOrder(0);
         document.setShopId(shopId);
-        document.setEnabled(true);
-        return document;
+        document.setEnabled(enabled);
     }
 
     private Comparator<ShopCategoryView> categoryComparator() {

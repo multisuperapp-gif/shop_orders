@@ -8,15 +8,11 @@ import com.msa.shop_orders.consumer.cart.dto.ConsumerCartUpdateItemRequest;
 import com.msa.shop_orders.consumer.cart.view.ConsumerCartView;
 import com.msa.shop_orders.consumer.cart.view.repository.ConsumerCartViewRepository;
 import com.msa.shop_orders.persistence.entity.FileEntity;
-import com.msa.shop_orders.persistence.entity.ProductEntity;
-import com.msa.shop_orders.persistence.entity.ProductImageEntity;
 import com.msa.shop_orders.persistence.entity.ProductOptionEntity;
-import com.msa.shop_orders.persistence.entity.ProductVariantEntity;
 import com.msa.shop_orders.persistence.repository.FileRepository;
 import com.msa.shop_orders.persistence.repository.ProductOptionRepository;
-import com.msa.shop_orders.persistence.repository.ProductImageRepository;
-import com.msa.shop_orders.persistence.repository.ProductRepository;
-import com.msa.shop_orders.persistence.repository.ProductVariantRepository;
+import com.msa.shop_orders.provider.shop.view.ShopProductView;
+import com.msa.shop_orders.provider.shop.view.repository.ShopProductViewRepository;
 import com.msa.shop_orders.provider.shop.view.ShopShellView;
 import com.msa.shop_orders.provider.shop.view.repository.ShopShellViewRepository;
 import com.msa.shop_orders.security.CurrentUserService;
@@ -48,9 +44,7 @@ public class ConsumerCartService {
 
     private final ConsumerCartViewRepository consumerCartViewRepository;
     private final CurrentUserService currentUserService;
-    private final ProductRepository productRepository;
-    private final ProductVariantRepository productVariantRepository;
-    private final ProductImageRepository productImageRepository;
+    private final ShopProductViewRepository shopProductViewRepository;
     private final ProductOptionRepository productOptionRepository;
     private final FileRepository fileRepository;
     private final ShopShellViewRepository shopShellViewRepository;
@@ -58,18 +52,14 @@ public class ConsumerCartService {
     public ConsumerCartService(
             ConsumerCartViewRepository consumerCartViewRepository,
             CurrentUserService currentUserService,
-            ProductRepository productRepository,
-            ProductVariantRepository productVariantRepository,
-            ProductImageRepository productImageRepository,
+            ShopProductViewRepository shopProductViewRepository,
             ProductOptionRepository productOptionRepository,
             FileRepository fileRepository,
             ShopShellViewRepository shopShellViewRepository
     ) {
         this.consumerCartViewRepository = consumerCartViewRepository;
         this.currentUserService = currentUserService;
-        this.productRepository = productRepository;
-        this.productVariantRepository = productVariantRepository;
-        this.productImageRepository = productImageRepository;
+        this.shopProductViewRepository = shopProductViewRepository;
         this.productOptionRepository = productOptionRepository;
         this.fileRepository = fileRepository;
         this.shopShellViewRepository = shopShellViewRepository;
@@ -268,31 +258,33 @@ public class ConsumerCartService {
     }
 
     private ResolvedProduct resolveProduct(Long productId, Long requestedVariantId) {
-        ProductEntity product = productRepository.findById(productId)
-                .filter(ProductEntity::isActive)
+        ShopProductView product = shopProductViewRepository.findById(productId)
+                .filter(ShopProductView::isActive)
                 .orElseThrow(() -> new BusinessException("PRODUCT_NOT_FOUND", "Product or variant not found.", HttpStatus.NOT_FOUND));
         ShopShellView shop = shopShellViewRepository.findById(product.getShopId())
                 .filter(candidate -> "APPROVED".equalsIgnoreCase(candidate.getApprovalStatus()))
                 .orElseThrow(() -> new BusinessException("SHOP_NOT_FOUND", "Shop not found.", HttpStatus.NOT_FOUND));
-        List<ProductVariantEntity> variants = productVariantRepository.findByProductIdOrderBySortOrderAscIdAsc(productId).stream()
-                .filter(ProductVariantEntity::isActive)
+        List<ShopProductView.Variant> variants = Optional.ofNullable(product.getVariants()).orElse(List.of()).stream()
+                .filter(ShopProductView.Variant::isActive)
                 .toList();
         if (variants.isEmpty()) {
             throw new BusinessException("PRODUCT_NOT_FOUND", "Product or variant not found.", HttpStatus.NOT_FOUND);
         }
-        ProductVariantEntity variant = requestedVariantId == null
-                ? variants.stream().filter(ProductVariantEntity::isDefaultVariant).findFirst().orElse(variants.getFirst())
-                : variants.stream().filter(candidate -> Objects.equals(candidate.getId(), requestedVariantId)).findFirst()
+        ShopProductView.Variant variant = requestedVariantId == null
+                ? variants.stream().filter(ShopProductView.Variant::isDefaultVariant).findFirst().orElse(variants.getFirst())
+                : variants.stream().filter(candidate -> Objects.equals(candidate.getVariantId(), requestedVariantId)).findFirst()
                 .orElseThrow(() -> new BusinessException("PRODUCT_NOT_FOUND", "Product or variant not found.", HttpStatus.NOT_FOUND));
-        Long imageFileId = productImageRepository.findFirstByProductIdAndPrimaryImageTrue(productId)
-                .map(ProductImageEntity::getFileId)
-                .orElse(null);
+        Long imageFileId = Optional.ofNullable(product.getImages()).orElse(List.of()).stream()
+                .filter(ShopProductView.Image::isPrimaryImage)
+                .map(ShopProductView.Image::getFileId)
+                .findFirst()
+                .orElse(product.getImageFileId());
         return new ResolvedProduct(
-                product.getId(),
-                product.getName(),
+                product.getProductId(),
+                product.getItemName(),
                 shop.getShopId(),
                 shop.getShopName(),
-                variant.getId(),
+                variant.getVariantId(),
                 variant.getVariantName(),
                 defaultAmount(variant.getSellingPrice()),
                 imageFileId

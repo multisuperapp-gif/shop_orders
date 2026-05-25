@@ -1,25 +1,18 @@
 package com.msa.shop_orders.consumer.order.service;
 
 import com.msa.shop_orders.common.exception.BusinessException;
-import com.msa.shop_orders.persistence.entity.InventoryEntity;
-import com.msa.shop_orders.persistence.entity.OrderEntity;
-import com.msa.shop_orders.persistence.entity.OrderItemEntity;
-import com.msa.shop_orders.persistence.entity.OrderStatusHistoryEntity;
-import com.msa.shop_orders.persistence.entity.ProductEntity;
-import com.msa.shop_orders.persistence.entity.ProductVariantEntity;
-import com.msa.shop_orders.persistence.entity.ShopDeliveryRuleEntity;
+import com.msa.shop_orders.common.mongo.MongoSequenceService;
 import com.msa.shop_orders.persistence.entity.ShopLocationEntity;
 import com.msa.shop_orders.persistence.entity.UserAddressEntity;
-import com.msa.shop_orders.persistence.repository.InventoryRepository;
-import com.msa.shop_orders.persistence.repository.OrderItemRepository;
-import com.msa.shop_orders.persistence.repository.OrderRepository;
-import com.msa.shop_orders.persistence.repository.OrderStatusHistoryRepository;
-import com.msa.shop_orders.persistence.repository.ProductRepository;
-import com.msa.shop_orders.persistence.repository.ProductVariantRepository;
-import com.msa.shop_orders.persistence.repository.ShopDeliveryRuleRepository;
 import com.msa.shop_orders.persistence.repository.ShopLocationRepository;
 import com.msa.shop_orders.persistence.repository.UserAddressRepository;
+import com.msa.shop_orders.provider.shop.dto.ShopProductDeliveryRuleData;
+import com.msa.shop_orders.provider.shop.service.ShopDeliveryRuleViewService;
+import com.msa.shop_orders.provider.shop.view.ShopOrderView;
+import com.msa.shop_orders.provider.shop.view.ShopProductView;
 import com.msa.shop_orders.provider.shop.view.ShopShellView;
+import com.msa.shop_orders.provider.shop.view.repository.ShopOrderViewRepository;
+import com.msa.shop_orders.provider.shop.view.repository.ShopProductViewRepository;
 import com.msa.shop_orders.provider.shop.view.repository.ShopShellViewRepository;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -35,42 +28,37 @@ import org.springframework.stereotype.Service;
 
 @Service
 public class ShopOrderWriteService {
-    private final OrderRepository orderRepository;
-    private final OrderItemRepository orderItemRepository;
-    private final OrderStatusHistoryRepository orderStatusHistoryRepository;
-    private final ProductRepository productRepository;
-    private final ProductVariantRepository productVariantRepository;
-    private final InventoryRepository inventoryRepository;
     private final ShopLocationRepository shopLocationRepository;
-    private final ShopDeliveryRuleRepository shopDeliveryRuleRepository;
+    private final ShopDeliveryRuleViewService shopDeliveryRuleViewService;
     private final UserAddressRepository userAddressRepository;
     private final ShopShellViewRepository shopShellViewRepository;
+    private final ShopProductViewRepository shopProductViewRepository;
+    private final ShopOrderViewRepository shopOrderViewRepository;
+    private final MongoSequenceService mongoSequenceService;
 
     public ShopOrderWriteService(
-            OrderRepository orderRepository,
-            OrderItemRepository orderItemRepository,
-            OrderStatusHistoryRepository orderStatusHistoryRepository,
-            ProductRepository productRepository,
-            ProductVariantRepository productVariantRepository,
-            InventoryRepository inventoryRepository,
             ShopLocationRepository shopLocationRepository,
-            ShopDeliveryRuleRepository shopDeliveryRuleRepository,
+            ShopDeliveryRuleViewService shopDeliveryRuleViewService,
             UserAddressRepository userAddressRepository,
-            ShopShellViewRepository shopShellViewRepository
+            ShopShellViewRepository shopShellViewRepository,
+            ShopProductViewRepository shopProductViewRepository,
+            ShopOrderViewRepository shopOrderViewRepository,
+            MongoSequenceService mongoSequenceService
     ) {
-        this.orderRepository = orderRepository;
-        this.orderItemRepository = orderItemRepository;
-        this.orderStatusHistoryRepository = orderStatusHistoryRepository;
-        this.productRepository = productRepository;
-        this.productVariantRepository = productVariantRepository;
-        this.inventoryRepository = inventoryRepository;
         this.shopLocationRepository = shopLocationRepository;
-        this.shopDeliveryRuleRepository = shopDeliveryRuleRepository;
+        this.shopDeliveryRuleViewService = shopDeliveryRuleViewService;
         this.userAddressRepository = userAddressRepository;
         this.shopShellViewRepository = shopShellViewRepository;
+        this.shopProductViewRepository = shopProductViewRepository;
+        this.shopOrderViewRepository = shopOrderViewRepository;
+        this.mongoSequenceService = mongoSequenceService;
     }
 
     public CreatedOrder createOrder(CreateOrderCommand command) {
+        return createOrderDocument(command);
+    }
+
+    private CreatedOrder createOrderDocument(CreateOrderCommand command) {
         validateItems(command.items());
         UserAddressEntity address = userAddressRepository.findById(command.addressId())
                 .filter(row -> command.userId().equals(row.getUserId()))
@@ -78,123 +66,120 @@ public class ShopOrderWriteService {
                 .orElseThrow(() -> new BusinessException("ADDRESS_NOT_FOUND", "Address not found.", HttpStatus.NOT_FOUND));
 
         Map<Long, Integer> quantitiesByVariant = mergeQuantities(command.items());
-        List<ProductVariantEntity> variants = productVariantRepository.findAllById(quantitiesByVariant.keySet());
-        if (variants.size() != quantitiesByVariant.size()) {
+        List<ShopProductView> products = shopProductViewRepository.findByVariantsVariantIdIn(quantitiesByVariant.keySet());
+        Map<Long, VariantSelection> selectionsByVariantId = new LinkedHashMap<>();
+        for (ShopProductView product : products) {
+            for (ShopProductView.Variant variant : safeVariants(product)) {
+                if (quantitiesByVariant.containsKey(variant.getVariantId())) {
+                    selectionsByVariantId.put(variant.getVariantId(), new VariantSelection(product, variant));
+                }
+            }
+        }
+        if (selectionsByVariantId.size() != quantitiesByVariant.size()) {
             throw new BusinessException("PRODUCT_NOT_FOUND", "One or more selected variants are no longer available.", HttpStatus.NOT_FOUND);
         }
-
-        Map<Long, ProductVariantEntity> variantsById = variants.stream()
-                .collect(LinkedHashMap::new, (map, item) -> map.put(item.getId(), item), LinkedHashMap::putAll);
-        Map<Long, ProductEntity> productsById = productRepository.findAllById(variants.stream().map(ProductVariantEntity::getProductId).distinct().toList())
-                .stream()
-                .collect(LinkedHashMap::new, (map, item) -> map.put(item.getId(), item), LinkedHashMap::putAll);
-        Map<Long, InventoryEntity> inventoryByVariantId = inventoryRepository.findByVariantIdIn(quantitiesByVariant.keySet())
-                .stream()
-                .collect(LinkedHashMap::new, (map, item) -> map.put(item.getVariantId(), item), LinkedHashMap::putAll);
-        Map<Long, CreateOrderItemCommand> commandsByVariantId = command.items().stream()
-                .collect(LinkedHashMap::new, (map, item) -> map.put(item.variantId(), item), LinkedHashMap::putAll);
-
-        Long shopId = resolveSingleShop(variants, productsById);
+        Long shopId = resolveSingleShop(selectionsByVariantId.values());
         ShopLocationEntity primaryLocation = shopLocationRepository.findFirstByShopIdAndPrimaryTrueOrderByIdAsc(shopId)
                 .orElseThrow(() -> new BusinessException("SHOP_NOT_FOUND", "Primary approved shop location is not available.", HttpStatus.BAD_REQUEST));
-        ShopDeliveryRuleEntity deliveryRule = shopDeliveryRuleRepository.findByShopLocationId(primaryLocation.getId()).orElse(null);
+        ShopProductDeliveryRuleData deliveryRule = shopDeliveryRuleViewService.findPrimaryDeliveryRule(shopId)
+                .orElse(new ShopProductDeliveryRuleData(primaryLocation.getId(), "DELIVERY", BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("999999999.99"), 30, 60));
         ShopShellView shop = shopShellViewRepository.findById(shopId).orElse(null);
 
         BigDecimal subtotal = BigDecimal.ZERO;
         List<CreatedOrderItem> createdItems = new ArrayList<>();
-        for (ProductVariantEntity variant : variants) {
-            ProductEntity product = productsById.get(variant.getProductId());
-            InventoryEntity inventory = inventoryByVariantId.get(variant.getId());
-            CreateOrderItemCommand itemCommand = commandsByVariantId.get(variant.getId());
-            Integer requestedQuantity = quantitiesByVariant.get(variant.getId());
-            validateVariant(product, variant, inventory, requestedQuantity);
+        Map<Long, ShopProductView> mutatedProductsById = new LinkedHashMap<>();
+        Map<Long, CreateOrderItemCommand> commandsByVariantId = command.items().stream()
+                .collect(LinkedHashMap::new, (map, item) -> map.put(item.variantId(), item), LinkedHashMap::putAll);
+
+        for (Map.Entry<Long, Integer> entry : quantitiesByVariant.entrySet()) {
+            Long variantId = entry.getKey();
+            Integer requestedQuantity = entry.getValue();
+            VariantSelection selection = selectionsByVariantId.get(variantId);
+            ShopProductView product = selection.product();
+            ShopProductView.Variant variant = selection.variant();
+            validateVariant(product, variant, requestedQuantity);
+            variant.setReservedQuantity(defaultInteger(variant.getReservedQuantity()) + requestedQuantity);
+            variant.setInventoryStatus(resolveInventoryStatus(
+                    variant.getQuantityAvailable(),
+                    variant.getReservedQuantity(),
+                    variant.getReorderLevel(),
+                    product.isActive() && variant.isActive()
+            ));
             BigDecimal unitPrice = defaultAmount(variant.getSellingPrice());
             BigDecimal lineTotal = unitPrice.multiply(BigDecimal.valueOf(requestedQuantity));
             subtotal = subtotal.add(lineTotal);
+            CreateOrderItemCommand itemCommand = commandsByVariantId.get(variantId);
             createdItems.add(new CreatedOrderItem(
-                    product.getId(),
-                    variant.getId(),
+                    product.getProductId(),
+                    variant.getVariantId(),
                     requestedQuantity,
                     unitPrice,
                     lineTotal,
-                    itemCommand.productNameSnapshot() == null || itemCommand.productNameSnapshot().isBlank() ? product.getName() : itemCommand.productNameSnapshot(),
+                    itemCommand.productNameSnapshot() == null || itemCommand.productNameSnapshot().isBlank() ? product.getItemName() : itemCommand.productNameSnapshot(),
                     itemCommand.variantNameSnapshot() == null || itemCommand.variantNameSnapshot().isBlank() ? variant.getVariantName() : itemCommand.variantNameSnapshot(),
-                    itemCommand.imageFileIdSnapshot(),
+                    itemCommand.imageFileIdSnapshot() == null ? resolvePrimaryImageFileId(product) : itemCommand.imageFileIdSnapshot(),
                     itemCommand.selectedOptionsJson() == null || itemCommand.selectedOptionsJson().isBlank() ? "{\"optionIds\":[],\"optionNames\":[]}" : itemCommand.selectedOptionsJson()
             ));
+            updateProductSummaryFromVariants(product);
+            mutatedProductsById.put(product.getProductId(), product);
         }
 
         String fulfillmentType = normalizeFulfillmentType(command.fulfillmentType());
         BigDecimal deliveryFee = resolveDeliveryFee(fulfillmentType, deliveryRule, subtotal);
         BigDecimal platformFee = command.platformFeeAmount() == null ? BigDecimal.ZERO : command.platformFeeAmount();
         BigDecimal totalAmount = subtotal.add(deliveryFee).add(platformFee);
+        Long orderId = mongoSequenceService.nextValue("shop-order-id");
+        LocalDateTime createdAt = command.createdAt() == null ? LocalDateTime.now() : command.createdAt();
 
-        OrderEntity order = new OrderEntity();
-        order.setOrderCode(generateOrderCode());
-        order.setUserId(command.userId());
-        order.setShopId(shopId);
-        order.setShopLocationId(primaryLocation.getId());
-        order.setAddressId(address.getId());
-        order.setOrderStatus(command.orderStatus());
-        order.setPaymentStatus(command.paymentStatus());
-        order.setFulfillmentType(fulfillmentType);
-        order.setSubtotalAmount(subtotal);
-        order.setTaxAmount(BigDecimal.ZERO);
-        order.setDeliveryFeeAmount(deliveryFee);
-        order.setPlatformFeeAmount(platformFee);
-        order.setPackagingFeeAmount(BigDecimal.ZERO);
-        order.setTipAmount(BigDecimal.ZERO);
-        order.setDiscountAmount(BigDecimal.ZERO);
-        order.setTotalAmount(totalAmount);
-        order.setCurrencyCode(command.currencyCode() == null || command.currencyCode().isBlank() ? "INR" : command.currencyCode());
-        OrderEntity savedOrder = orderRepository.save(order);
-
-        List<OrderItemEntity> orderItems = new ArrayList<>();
-        for (CreatedOrderItem item : createdItems) {
-            InventoryEntity inventory = inventoryByVariantId.get(item.variantId());
-            inventory.setReservedQuantity(defaultInteger(inventory.getReservedQuantity()) + item.quantity());
-
-            OrderItemEntity orderItem = new OrderItemEntity();
-            orderItem.setOrderId(savedOrder.getId());
-            orderItem.setProductId(item.productId());
-            orderItem.setVariantId(item.variantId());
-            orderItem.setSelectedOptionsJson(item.selectedOptionsJson());
-            orderItem.setProductNameSnapshot(item.productNameSnapshot());
-            orderItem.setVariantNameSnapshot(item.variantNameSnapshot());
-            orderItem.setImageFileIdSnapshot(item.imageFileIdSnapshot());
-            orderItem.setShopNameSnapshot(shop == null || shop.getShopName() == null || shop.getShopName().isBlank() ? "Shop" : shop.getShopName());
-            orderItem.setQuantity(item.quantity());
-            orderItem.setUnitPriceSnapshot(item.unitPrice());
-            orderItem.setTaxSnapshot(BigDecimal.ZERO);
-            orderItem.setLineTotal(item.lineTotal());
-            orderItems.add(orderItem);
+        ShopOrderView document = new ShopOrderView();
+        document.setOrderId(orderId);
+        document.setShopId(shopId);
+        document.setUserId(command.userId());
+        document.setOrderCode(generateOrderCode());
+        document.setShopName(shop == null || shop.getShopName() == null || shop.getShopName().isBlank() ? "Shop" : shop.getShopName());
+        document.setOrderStatus(command.orderStatus());
+        document.setPaymentStatus(command.paymentStatus());
+        document.setPaymentCode(command.paymentCode());
+        document.setFulfillmentType(fulfillmentType);
+        document.setAddressLabel(command.addressLabel());
+        document.setAddressLine(command.addressLine());
+        document.setRefundPresent(false);
+        document.setLatestRefundStatus(null);
+        document.setRefund(null);
+        document.setCreatedAt(createdAt);
+        document.setUpdatedAt(createdAt);
+        document.setItemCount(createdItems.stream().map(CreatedOrderItem::quantity).filter(Objects::nonNull).mapToInt(Integer::intValue).sum());
+        document.setSubtotalAmount(subtotal);
+        document.setTaxAmount(BigDecimal.ZERO);
+        document.setItemsTotal(subtotal);
+        document.setDeliveryCharges(deliveryFee);
+        document.setPlatformFee(platformFee);
+        document.setDiscountAmount(BigDecimal.ZERO);
+        document.setTotalOrderValue(totalAmount);
+        document.setCurrencyCode(command.currencyCode() == null || command.currencyCode().isBlank() ? "INR" : command.currencyCode());
+        document.setCancellable(true);
+        document.setItems(createdItems.stream().map(this::toOrderItemDocument).toList());
+        document.setTimeline(List.of(initialTimeline(command.orderStatus(), createdAt, command.historyReason())));
+        shopOrderViewRepository.save(document);
+        if (!mutatedProductsById.isEmpty()) {
+            shopProductViewRepository.saveAll(mutatedProductsById.values());
         }
-        orderItemRepository.saveAll(orderItems);
-        inventoryRepository.saveAll(inventoryByVariantId.values());
-
-        OrderStatusHistoryEntity history = new OrderStatusHistoryEntity();
-        history.setOrderId(savedOrder.getId());
-        history.setNewStatus(command.orderStatus());
-        history.setChangedByUserId(command.userId());
-        history.setReason(command.historyReason());
-        history.setChangedAt(command.createdAt());
-        orderStatusHistoryRepository.save(history);
 
         return new CreatedOrder(
-                savedOrder.getId(),
-                savedOrder.getOrderCode(),
-                savedOrder.getShopId(),
-                savedOrder.getUserId(),
-                savedOrder.getOrderStatus(),
-                savedOrder.getPaymentStatus(),
-                savedOrder.getFulfillmentType(),
-                savedOrder.getSubtotalAmount(),
-                savedOrder.getDeliveryFeeAmount(),
-                savedOrder.getTotalAmount(),
-                savedOrder.getPlatformFeeAmount(),
-                savedOrder.getCurrencyCode(),
-                savedOrder.getCreatedAt() == null ? command.createdAt() : savedOrder.getCreatedAt(),
-                shop == null || shop.getShopName() == null || shop.getShopName().isBlank() ? "Shop" : shop.getShopName(),
+                document.getOrderId(),
+                document.getOrderCode(),
+                document.getShopId(),
+                document.getUserId(),
+                document.getOrderStatus(),
+                document.getPaymentStatus(),
+                document.getFulfillmentType(),
+                document.getSubtotalAmount(),
+                document.getDeliveryCharges(),
+                document.getTotalOrderValue(),
+                document.getPlatformFee(),
+                document.getCurrencyCode(),
+                document.getCreatedAt(),
+                document.getShopName(),
                 command.addressLabel(),
                 command.addressLine(),
                 command.paymentCode(),
@@ -221,16 +206,12 @@ public class ShopOrderWriteService {
         return quantitiesByVariant;
     }
 
-    private Long resolveSingleShop(List<ProductVariantEntity> variants, Map<Long, ProductEntity> productsById) {
+    private Long resolveSingleShop(Iterable<VariantSelection> selections) {
         Long shopId = null;
-        for (ProductVariantEntity variant : variants) {
-            ProductEntity product = productsById.get(variant.getProductId());
-            if (product == null) {
-                throw new BusinessException("PRODUCT_NOT_FOUND", "Selected product is no longer available.", HttpStatus.NOT_FOUND);
-            }
+        for (VariantSelection selection : selections) {
             if (shopId == null) {
-                shopId = product.getShopId();
-            } else if (!Objects.equals(shopId, product.getShopId())) {
+                shopId = selection.product().getShopId();
+            } else if (!Objects.equals(shopId, selection.product().getShopId())) {
                 throw new BusinessException("ORDER_INVALID", "Items from multiple shops cannot be ordered together.", HttpStatus.BAD_REQUEST);
             }
         }
@@ -240,24 +221,104 @@ public class ShopOrderWriteService {
         return shopId;
     }
 
-    private void validateVariant(ProductEntity product, ProductVariantEntity variant, InventoryEntity inventory, Integer requestedQuantity) {
+    private void validateVariant(ShopProductView product, ShopProductView.Variant variant, Integer requestedQuantity) {
         if (product == null || variant == null) {
             throw new BusinessException("PRODUCT_NOT_FOUND", "Selected product is no longer available.", HttpStatus.NOT_FOUND);
         }
         if (!product.isActive() || !variant.isActive()) {
             throw new BusinessException("PRODUCT_INACTIVE", "Selected product is inactive.", HttpStatus.BAD_REQUEST);
         }
-        if (inventory == null) {
-            throw new BusinessException("PRODUCT_NOT_FOUND", "Product inventory not found.", HttpStatus.NOT_FOUND);
+        int availableToReserve = defaultInteger(variant.getQuantityAvailable()) - defaultInteger(variant.getReservedQuantity());
+        if (availableToReserve < requestedQuantity) {
+            throw new BusinessException("OUT_OF_STOCK", "Requested quantity is not available for variant " + variant.getVariantId() + ".", HttpStatus.BAD_REQUEST);
         }
-        if (!"IN_STOCK".equalsIgnoreCase(inventory.getInventoryStatus())
-                && !"LOW_STOCK".equalsIgnoreCase(inventory.getInventoryStatus())) {
+        String inventoryStatus = variant.getInventoryStatus();
+        if (!"IN_STOCK".equalsIgnoreCase(inventoryStatus)
+                && !"LOW_STOCK".equalsIgnoreCase(inventoryStatus)) {
             throw new BusinessException("OUT_OF_STOCK", "Selected item is out of stock.", HttpStatus.BAD_REQUEST);
         }
-        int availableToReserve = defaultInteger(inventory.getQuantityAvailable()) - defaultInteger(inventory.getReservedQuantity());
-        if (availableToReserve < requestedQuantity) {
-            throw new BusinessException("OUT_OF_STOCK", "Requested quantity is not available for variant " + variant.getId() + ".", HttpStatus.BAD_REQUEST);
+    }
+
+    private List<ShopProductView.Variant> safeVariants(ShopProductView product) {
+        return product.getVariants() == null ? List.of() : product.getVariants();
+    }
+
+    private Long resolvePrimaryImageFileId(ShopProductView product) {
+        if (product.getImages() == null || product.getImages().isEmpty()) {
+            return product.getImageFileId();
         }
+        return product.getImages().stream()
+                .filter(ShopProductView.Image::isPrimaryImage)
+                .map(ShopProductView.Image::getFileId)
+                .findFirst()
+                .orElse(product.getImageFileId());
+    }
+
+    private void updateProductSummaryFromVariants(ShopProductView product) {
+        ShopProductView.Variant primary = safeVariants(product).stream()
+                .filter(ShopProductView.Variant::isDefaultVariant)
+                .findFirst()
+                .orElseGet(() -> safeVariants(product).stream().findFirst().orElse(null));
+        if (primary == null) {
+            return;
+        }
+        product.setVariantName(primary.getVariantName());
+        product.setUnitValue(primary.getUnitValue());
+        product.setUnitType(primary.getUnitType());
+        product.setWeightInGrams(primary.getWeightInGrams());
+        product.setMrp(primary.getMrp());
+        product.setSellingPrice(primary.getSellingPrice());
+        product.setQuantityAvailable(primary.getQuantityAvailable());
+        product.setReservedQuantity(primary.getReservedQuantity());
+        product.setReorderLevel(primary.getReorderLevel());
+        product.setInventoryStatus(primary.getInventoryStatus());
+        product.setUpdatedAt(LocalDateTime.now());
+    }
+
+    private String resolveInventoryStatus(Integer quantityAvailable, Integer reservedQuantity, Integer reorderLevel, boolean active) {
+        if (!active) {
+            return "DISCONTINUED";
+        }
+        int available = defaultInteger(quantityAvailable) - defaultInteger(reservedQuantity);
+        if (available <= 0) {
+            return "OUT_OF_STOCK";
+        }
+        if (reorderLevel != null && available <= reorderLevel) {
+            return "LOW_STOCK";
+        }
+        return "IN_STOCK";
+    }
+
+    private ShopOrderView.Item toOrderItemDocument(CreatedOrderItem item) {
+        ShopOrderView.Item document = new ShopOrderView.Item();
+        document.setProductId(item.productId());
+        document.setVariantId(item.variantId());
+        document.setProductName(item.productNameSnapshot());
+        document.setVariantName(item.variantNameSnapshot());
+        document.setItemName(buildItemName(item.productNameSnapshot(), item.variantNameSnapshot()));
+        document.setImageFileId(item.imageFileIdSnapshot());
+        document.setQuantity(item.quantity());
+        document.setUnitLabel(null);
+        document.setUnitPrice(item.unitPrice());
+        document.setLineTotal(item.lineTotal());
+        return document;
+    }
+
+    private ShopOrderView.TimelineEvent initialTimeline(String orderStatus, LocalDateTime changedAt, String reason) {
+        ShopOrderView.TimelineEvent event = new ShopOrderView.TimelineEvent();
+        event.setOldStatus(null);
+        event.setNewStatus(orderStatus);
+        event.setReason(reason);
+        event.setChangedAt(changedAt);
+        return event;
+    }
+
+    private String buildItemName(String productName, String variantName) {
+        String resolvedProductName = productName == null || productName.isBlank() ? "Item" : productName;
+        if (variantName == null || variantName.isBlank() || variantName.equalsIgnoreCase(resolvedProductName)) {
+            return resolvedProductName;
+        }
+        return resolvedProductName + " (" + variantName + ")";
     }
 
     private String normalizeFulfillmentType(String value) {
@@ -271,23 +332,23 @@ public class ShopOrderWriteService {
         return normalized;
     }
 
-    private BigDecimal resolveDeliveryFee(String fulfillmentType, ShopDeliveryRuleEntity deliveryRule, BigDecimal subtotal) {
+    private BigDecimal resolveDeliveryFee(String fulfillmentType, ShopProductDeliveryRuleData deliveryRule, BigDecimal subtotal) {
         if ("PICKUP".equalsIgnoreCase(fulfillmentType)) {
             return BigDecimal.ZERO;
         }
-        String deliveryType = deliveryRule == null || deliveryRule.getDeliveryType() == null ? "DELIVERY" : deliveryRule.getDeliveryType();
+        String deliveryType = deliveryRule == null || deliveryRule.deliveryType() == null ? "DELIVERY" : deliveryRule.deliveryType();
         if ("PICKUP_ONLY".equalsIgnoreCase(deliveryType)) {
             throw new BusinessException("ORDER_INVALID", "This shop currently supports pickup only.", HttpStatus.BAD_REQUEST);
         }
-        BigDecimal minOrderAmount = deliveryRule == null ? BigDecimal.ZERO : defaultAmount(deliveryRule.getMinOrderAmount());
+        BigDecimal minOrderAmount = deliveryRule == null ? BigDecimal.ZERO : defaultAmount(deliveryRule.minOrderAmount());
         if (subtotal.compareTo(minOrderAmount) < 0) {
             throw new BusinessException("ORDER_INVALID", "Minimum order amount for delivery is " + minOrderAmount + ".", HttpStatus.BAD_REQUEST);
         }
-        BigDecimal freeDeliveryAbove = deliveryRule == null ? null : deliveryRule.getFreeDeliveryAbove();
+        BigDecimal freeDeliveryAbove = deliveryRule == null ? null : deliveryRule.freeDeliveryAbove();
         if (freeDeliveryAbove != null && subtotal.compareTo(freeDeliveryAbove) >= 0) {
             return BigDecimal.ZERO;
         }
-        return deliveryRule == null ? BigDecimal.ZERO : defaultAmount(deliveryRule.getDeliveryFee());
+        return deliveryRule == null ? BigDecimal.ZERO : defaultAmount(deliveryRule.deliveryFee());
     }
 
     private BigDecimal defaultAmount(BigDecimal value) {
@@ -317,6 +378,9 @@ public class ShopOrderWriteService {
             String paymentCode,
             List<CreateOrderItemCommand> items
     ) {
+    }
+
+    private record VariantSelection(ShopProductView product, ShopProductView.Variant variant) {
     }
 
     public record CreateOrderItemCommand(
