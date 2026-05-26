@@ -12,15 +12,20 @@ import com.msa.shop_orders.persistence.repository.UserAddressRepository;
 import com.msa.shop_orders.provider.shop.dto.ShopProductDeliveryRuleData;
 import com.msa.shop_orders.provider.shop.service.ShopDeliveryRuleViewService;
 import com.msa.shop_orders.provider.shop.service.ShopOperatingHoursViewService;
+import com.msa.shop_orders.provider.shop.view.ShopProductView;
 import com.msa.shop_orders.provider.shop.view.ShopShellView;
+import com.msa.shop_orders.provider.shop.view.repository.ShopProductViewRepository;
 import com.msa.shop_orders.provider.shop.view.repository.ShopShellViewRepository;
 import com.msa.shop_orders.security.CurrentUserService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.time.LocalTime;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -34,6 +39,7 @@ public class ConsumerCheckoutService {
     private final ShopLocationRepository shopLocationRepository;
     private final ShopOperatingHoursViewService shopOperatingHoursViewService;
     private final ShopShellViewRepository shopShellViewRepository;
+    private final ShopProductViewRepository shopProductViewRepository;
 
     public ConsumerCheckoutService(
             CurrentUserService currentUserService,
@@ -42,7 +48,8 @@ public class ConsumerCheckoutService {
             UserAddressRepository userAddressRepository,
             ShopLocationRepository shopLocationRepository,
             ShopOperatingHoursViewService shopOperatingHoursViewService,
-            ShopShellViewRepository shopShellViewRepository
+            ShopShellViewRepository shopShellViewRepository,
+            ShopProductViewRepository shopProductViewRepository
     ) {
         this.currentUserService = currentUserService;
         this.consumerCartService = consumerCartService;
@@ -51,6 +58,7 @@ public class ConsumerCheckoutService {
         this.shopLocationRepository = shopLocationRepository;
         this.shopOperatingHoursViewService = shopOperatingHoursViewService;
         this.shopShellViewRepository = shopShellViewRepository;
+        this.shopProductViewRepository = shopProductViewRepository;
     }
 
     @Transactional(readOnly = true)
@@ -82,7 +90,8 @@ public class ConsumerCheckoutService {
                 : calculateDeliveryFee(shop, subtotal);
         BigDecimal platformFee = BigDecimal.ZERO;
         ShopShellView shopShell = shopShellViewRepository.findById(cart.getShopId()).orElse(null);
-        BigDecimal discountAmount = resolveRestaurantCouponDiscount(shopShell, subtotal);
+        BigDecimal couponEligibleSubtotal = resolveCouponEligibleSubtotal(cart);
+        BigDecimal discountAmount = resolveRestaurantCouponDiscount(shopShell, couponEligibleSubtotal);
         BigDecimal totalAmount = subtotal.add(deliveryFee).add(platformFee).subtract(discountAmount).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
 
         return new ConsumerCheckoutPreviewData(
@@ -217,6 +226,34 @@ public class ConsumerCheckoutService {
         return shop.deliveryFee().setScale(2, RoundingMode.HALF_UP);
     }
 
+    private BigDecimal resolveCouponEligibleSubtotal(ConsumerCartView cart) {
+        if (cart == null || cart.getItems() == null || cart.getItems().isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        Map<Long, ShopProductView> productsById = new LinkedHashMap<>();
+        for (ShopProductView product : shopProductViewRepository.findAllById(
+                cart.getItems().stream()
+                        .map(ConsumerCartView.Item::getProductId)
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .toList()
+        )) {
+            productsById.put(product.getProductId(), product);
+        }
+        BigDecimal eligibleSubtotal = BigDecimal.ZERO;
+        for (ConsumerCartView.Item item : cart.getItems()) {
+            if (item == null) {
+                continue;
+            }
+            ShopProductView product = productsById.get(item.getProductId());
+            if (hasActivePromotion(product)) {
+                continue;
+            }
+            eligibleSubtotal = eligibleSubtotal.add(defaultAmount(item.getLineTotal()));
+        }
+        return eligibleSubtotal.setScale(2, RoundingMode.HALF_UP);
+    }
+
     private BigDecimal resolveRestaurantCouponDiscount(ShopShellView shop, BigDecimal subtotal) {
         if (shop == null || shop.getRestaurantCoupon() == null || subtotal == null) {
             return BigDecimal.ZERO;
@@ -254,6 +291,21 @@ public class ConsumerCheckoutService {
             return subtotal.setScale(2, RoundingMode.HALF_UP);
         }
         return discountAmount.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private boolean hasActivePromotion(ShopProductView product) {
+        if (product == null || product.getPromotion() == null) {
+            return false;
+        }
+        ShopProductView.Promotion promotion = product.getPromotion();
+        if (!"ACTIVE".equalsIgnoreCase(promotion.getStatus())) {
+            return false;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        return promotion.getStartsAt() != null
+                && promotion.getEndsAt() != null
+                && !now.isBefore(promotion.getStartsAt())
+                && !now.isAfter(promotion.getEndsAt());
     }
 
     private BigDecimal defaultAmount(BigDecimal value) {

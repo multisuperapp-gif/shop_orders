@@ -128,7 +128,8 @@ public class ShopOrderWriteService {
         String fulfillmentType = normalizeFulfillmentType(command.fulfillmentType());
         BigDecimal deliveryFee = resolveDeliveryFee(fulfillmentType, deliveryRule, subtotal);
         BigDecimal platformFee = command.platformFeeAmount() == null ? BigDecimal.ZERO : command.platformFeeAmount();
-        BigDecimal discountAmount = resolveRestaurantCouponDiscount(shop, subtotal);
+        BigDecimal couponEligibleSubtotal = resolveCouponEligibleSubtotal(createdItems, selectionsByVariantId);
+        BigDecimal discountAmount = resolveRestaurantCouponDiscount(shop, couponEligibleSubtotal);
         BigDecimal totalAmount = subtotal.add(deliveryFee).add(platformFee).subtract(discountAmount).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
         Long orderId = mongoSequenceService.nextValue("shop-order-id");
         LocalDateTime createdAt = command.createdAt() == null ? LocalDateTime.now() : command.createdAt();
@@ -353,6 +354,27 @@ public class ShopOrderWriteService {
         return deliveryRule == null ? BigDecimal.ZERO : defaultAmount(deliveryRule.deliveryFee());
     }
 
+    private BigDecimal resolveCouponEligibleSubtotal(
+            List<CreatedOrderItem> createdItems,
+            Map<Long, VariantSelection> selectionsByVariantId
+    ) {
+        if (createdItems == null || createdItems.isEmpty()) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal eligibleSubtotal = BigDecimal.ZERO;
+        for (CreatedOrderItem item : createdItems) {
+            if (item == null) {
+                continue;
+            }
+            VariantSelection selection = selectionsByVariantId.get(item.variantId());
+            if (selection != null && hasActivePromotion(selection.product())) {
+                continue;
+            }
+            eligibleSubtotal = eligibleSubtotal.add(defaultAmount(item.lineTotal()));
+        }
+        return eligibleSubtotal.setScale(2, RoundingMode.HALF_UP);
+    }
+
     private BigDecimal defaultAmount(BigDecimal value) {
         return value == null ? BigDecimal.ZERO : value;
     }
@@ -394,6 +416,21 @@ public class ShopOrderWriteService {
             return subtotal.setScale(2, RoundingMode.HALF_UP);
         }
         return discountAmount.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private boolean hasActivePromotion(ShopProductView product) {
+        if (product == null || product.getPromotion() == null) {
+            return false;
+        }
+        ShopProductView.Promotion promotion = product.getPromotion();
+        if (!"ACTIVE".equalsIgnoreCase(promotion.getStatus())) {
+            return false;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        return promotion.getStartsAt() != null
+                && promotion.getEndsAt() != null
+                && !now.isBefore(promotion.getStartsAt())
+                && !now.isAfter(promotion.getEndsAt());
     }
 
     private int defaultInteger(Integer value) {
