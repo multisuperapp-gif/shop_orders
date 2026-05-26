@@ -13,12 +13,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping({
-        "/shops/categories",
-        "/shop/category",
-        "/shops/category",
-        "/shop/categories"
-})
+@RequestMapping("/shops/categories")
 public class ShopCategoryController {
     private final ShopCategoryService shopCategoryService;
 
