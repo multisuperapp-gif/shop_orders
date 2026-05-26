@@ -83,21 +83,29 @@ public class ShopCategoryViewService {
         ShopCategoryView document = shopCategoryViewRepository
                 .findByShopTypeIdAndShopIdIsNullAndCategoryId(shopTypeId, categoryId)
                 .orElseGet(ShopCategoryView::new);
-        populate(document, "type:" + shopTypeId + ":" + categoryId, categoryId, shopTypeId, null, name, normalizedName, enabled);
+        populate(document, "type:" + shopTypeId + ":" + categoryId, categoryId, shopTypeId, null, name, normalizedName, enabled, 0);
         shopCategoryViewRepository.save(document);
     }
 
-    public void upsertShopCategory(Long shopId, Long shopTypeId, Long categoryId, String name, String normalizedName, boolean enabled) {
+    public void upsertShopCategory(Long shopId, Long shopTypeId, Long categoryId, String name, String normalizedName, boolean enabled, Integer sortOrder) {
         if (shopId == null || categoryId == null) {
             return;
         }
         ShopCategoryView document = shopCategoryViewRepository.findByShopIdAndCategoryId(shopId, categoryId)
                 .orElseGet(ShopCategoryView::new);
-        populate(document, "shop:" + shopId + ":" + categoryId, categoryId, shopTypeId, shopId, name, normalizedName, enabled);
+        int resolvedSortOrder = sortOrder == null ? document.getSortOrder() : sortOrder;
+        populate(document, "shop:" + shopId + ":" + categoryId, categoryId, shopTypeId, shopId, name, normalizedName, enabled, resolvedSortOrder);
         shopCategoryViewRepository.save(document);
     }
 
-    private void populate(ShopCategoryView document, String id, Long categoryId, Long shopTypeId, Long shopId, String name, String normalizedName, boolean enabled) {
+    public void saveAllShopCategories(List<ShopCategoryView> categories) {
+        if (categories == null || categories.isEmpty()) {
+            return;
+        }
+        shopCategoryViewRepository.saveAll(categories);
+    }
+
+    private void populate(ShopCategoryView document, String id, Long categoryId, Long shopTypeId, Long shopId, String name, String normalizedName, boolean enabled, int sortOrder) {
         document.setId(id);
         document.setCategoryId(categoryId);
         document.setParentCategoryId(null);
@@ -108,7 +116,7 @@ public class ShopCategoryViewService {
         document.setComingSoon(false);
         document.setComingSoonMessage(null);
         document.setImageObjectKey(null);
-        document.setSortOrder(0);
+        document.setSortOrder(sortOrder);
         document.setShopId(shopId);
         document.setEnabled(enabled);
     }

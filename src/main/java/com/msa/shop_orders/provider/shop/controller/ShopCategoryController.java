@@ -2,6 +2,7 @@ package com.msa.shop_orders.provider.shop.controller;
 
 import com.msa.shop_orders.common.api.ApiResponse;
 import com.msa.shop_orders.provider.shop.dto.ShopAvailableCategoryData;
+import com.msa.shop_orders.provider.shop.dto.ShopCategoryOrderUpdateRequest;
 import com.msa.shop_orders.provider.shop.dto.ShopCategoryData;
 import com.msa.shop_orders.provider.shop.dto.ShopCreateCategoryRequest;
 import com.msa.shop_orders.provider.shop.dto.ShopCategoryStatusUpdateRequest;
@@ -49,5 +50,15 @@ public class ShopCategoryController {
                 ? "Shop category enabled successfully."
                 : "Shop category disabled successfully.";
         return ApiResponse.success(message, shopCategoryService.updateCategoryStatus(categoryId, request));
+    }
+
+    @PatchMapping("/order")
+    public ApiResponse<List<ShopCategoryData>> updateCategoryOrder(
+            @Valid @RequestBody ShopCategoryOrderUpdateRequest request
+    ) {
+        return ApiResponse.success(
+                "Shop category order updated successfully.",
+                shopCategoryService.updateCategoryOrder(request)
+        );
     }
 }

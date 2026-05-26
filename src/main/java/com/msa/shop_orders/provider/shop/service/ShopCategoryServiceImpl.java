@@ -3,6 +3,7 @@ package com.msa.shop_orders.provider.shop.service;
 import com.msa.shop_orders.common.exception.BusinessException;
 import com.msa.shop_orders.common.mongo.MongoSequenceService;
 import com.msa.shop_orders.provider.shop.dto.ShopAvailableCategoryData;
+import com.msa.shop_orders.provider.shop.dto.ShopCategoryOrderUpdateRequest;
 import com.msa.shop_orders.provider.shop.dto.ShopCategoryData;
 import com.msa.shop_orders.provider.shop.dto.ShopCreateCategoryRequest;
 import com.msa.shop_orders.provider.shop.dto.ShopCategoryStatusUpdateRequest;
@@ -14,6 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.LinkedHashMap;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -57,7 +60,7 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
         ShopShellView shopEntity = shopContextService.currentApprovedShop();
         Long shopTypeId = requireShopTypeId(shopEntity);
         return shopCategoryViewService.findShopCategories(shopEntity.getShopId(), shopTypeId).stream()
-                .map(category -> new ShopCategoryData(category.getCategoryId(), category.getName(), category.isEnabled()))
+                .map(this::toCategoryData)
                 .toList();
     }
 
@@ -75,8 +78,9 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
             throw new BusinessException("CATEGORY_ALREADY_ADDED", "Category is already added for this shop.", HttpStatus.BAD_REQUEST);
         }
         shopCategoryViewService.upsertTypeCategory(shopTypeId, categoryId, displayName, normalizedName, true);
-        shopCategoryViewService.upsertShopCategory(shopEntity.getShopId(), shopTypeId, categoryId, displayName, normalizedName, true);
-        return new ShopCategoryData(categoryId, displayName, true);
+        int nextSortOrder = nextShopCategorySortOrder(shopEntity.getShopId(), shopTypeId);
+        shopCategoryViewService.upsertShopCategory(shopEntity.getShopId(), shopTypeId, categoryId, displayName, normalizedName, true, nextSortOrder);
+        return new ShopCategoryData(categoryId, displayName, true, nextSortOrder);
     }
 
     @Override
@@ -92,15 +96,22 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
         if (shopCategoryViewService.findShopCategory(shopEntity.getShopId(), shopTypeId, categoryId).isPresent()) {
             throw new BusinessException("CATEGORY_ALREADY_ADDED", "Category is already added for this shop.", HttpStatus.BAD_REQUEST);
         }
+        int nextSortOrder = nextShopCategorySortOrder(shopEntity.getShopId(), shopTypeId);
         shopCategoryViewService.upsertShopCategory(
                 shopEntity.getShopId(),
                 shopTypeId,
                 allowedCategory.getCategoryId(),
                 allowedCategory.getName(),
                 allowedCategory.getNormalizedName(),
-                true
+                true,
+                nextSortOrder
         );
-        return new ShopCategoryData(allowedCategory.getCategoryId(), allowedCategory.getName(), true);
+        return new ShopCategoryData(
+                allowedCategory.getCategoryId(),
+                allowedCategory.getName(),
+                true,
+                nextSortOrder
+        );
     }
 
     @Override
@@ -117,9 +128,40 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
                 category.getCategoryId(),
                 category.getName(),
                 category.getNormalizedName(),
-                nextEnabled
+                nextEnabled,
+                category.getSortOrder()
         );
-        return new ShopCategoryData(category.getCategoryId(), category.getName(), nextEnabled);
+        return new ShopCategoryData(category.getCategoryId(), category.getName(), nextEnabled, category.getSortOrder());
+    }
+
+    @Override
+    @Transactional
+    public List<ShopCategoryData> updateCategoryOrder(ShopCategoryOrderUpdateRequest request) {
+        ShopShellView shopEntity = shopContextService.currentApprovedShop();
+        Long shopTypeId = requireShopTypeId(shopEntity);
+        List<ShopCategoryView> existing = shopCategoryViewService.findShopCategories(shopEntity.getShopId(), shopTypeId);
+        if (existing.isEmpty()) {
+            return List.of();
+        }
+        List<Long> orderedIds = request.categoryIds() == null
+                ? List.of()
+                : request.categoryIds().stream().filter(java.util.Objects::nonNull).distinct().toList();
+        Set<Long> existingIds = existing.stream().map(ShopCategoryView::getCategoryId).collect(Collectors.toSet());
+        if (orderedIds.size() != existing.size() || !existingIds.equals(Set.copyOf(orderedIds))) {
+            throw new BusinessException("CATEGORY_ORDER_INVALID", "Category order payload is invalid.", HttpStatus.BAD_REQUEST);
+        }
+        Map<Long, ShopCategoryView> categoriesById = existing.stream()
+                .collect(Collectors.toMap(ShopCategoryView::getCategoryId, item -> item, (left, right) -> left, LinkedHashMap::new));
+        for (int index = 0; index < orderedIds.size(); index++) {
+            ShopCategoryView category = categoriesById.get(orderedIds.get(index));
+            if (category != null) {
+                category.setSortOrder(index);
+            }
+        }
+        shopCategoryViewService.saveAllShopCategories(existing);
+        return shopCategoryViewService.findShopCategories(shopEntity.getShopId(), shopTypeId).stream()
+                .map(this::toCategoryData)
+                .toList();
     }
 
     private Long requireShopTypeId(ShopShellView shopEntity) {
@@ -147,5 +189,21 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
 
     private String normalizeKey(String value) {
         return value == null ? "" : value.trim().replaceAll("\s+", " ").toUpperCase(Locale.ROOT);
+    }
+
+    private int nextShopCategorySortOrder(Long shopId, Long shopTypeId) {
+        return shopCategoryViewService.findShopCategories(shopId, shopTypeId).stream()
+                .mapToInt(ShopCategoryView::getSortOrder)
+                .max()
+                .orElse(-1) + 1;
+    }
+
+    private ShopCategoryData toCategoryData(ShopCategoryView category) {
+        return new ShopCategoryData(
+                category.getCategoryId(),
+                category.getName(),
+                category.isEnabled(),
+                category.getSortOrder()
+        );
     }
 }
