@@ -14,11 +14,43 @@ import java.util.List;
 @Component
 public class GroceryProviderShopProductTypeHandler implements ProviderShopProductTypeHandler {
     private final SharedProviderShopProductTypeHandler delegate;
-    public GroceryProviderShopProductTypeHandler(SharedProviderShopProductTypeHandler delegate) { this.delegate = delegate; }
-    public ShopTypeFamily family() { return ShopTypeFamily.GROCERY; }
-    public List<ShopProductData> products(ShopShellView shop, Long categoryId) { return delegate.products(shop, categoryId); }
-    public ShopProductData createProduct(ShopShellView shop, ShopCreateProductRequest request) { return delegate.createProduct(shop, request); }
-    public ShopProductData updateProduct(ShopShellView shop, Long productId, ShopCreateProductRequest request) { return delegate.updateProduct(shop, productId, request); }
-    public ShopProductData duplicateProduct(ShopShellView shop, Long productId) { return delegate.duplicateProduct(shop, productId); }
-    public ShopProductData updateProductStatus(ShopShellView shop, Long productId, ShopProductStatusUpdateRequest request) { return delegate.updateProductStatus(shop, productId, request); }
+    private final GroceryProductRequestNormalizer requestNormalizer;
+
+    public GroceryProviderShopProductTypeHandler(
+            SharedProviderShopProductTypeHandler delegate,
+            GroceryProductRequestNormalizer requestNormalizer
+    ) {
+        this.delegate = delegate;
+        this.requestNormalizer = requestNormalizer;
+    }
+
+    @Override
+    public ShopTypeFamily family() {
+        return ShopTypeFamily.GROCERY;
+    }
+
+    @Override
+    public List<ShopProductData> products(ShopShellView shop, Long categoryId) {
+        return delegate.products(shop, categoryId);
+    }
+
+    @Override
+    public ShopProductData createProduct(ShopShellView shop, ShopCreateProductRequest request) {
+        return delegate.createProduct(shop, requestNormalizer.normalize(request));
+    }
+
+    @Override
+    public ShopProductData updateProduct(ShopShellView shop, Long productId, ShopCreateProductRequest request) {
+        return delegate.updateProduct(shop, productId, requestNormalizer.normalize(request));
+    }
+
+    @Override
+    public ShopProductData duplicateProduct(ShopShellView shop, Long productId) {
+        return delegate.duplicateProduct(shop, productId);
+    }
+
+    @Override
+    public ShopProductData updateProductStatus(ShopShellView shop, Long productId, ShopProductStatusUpdateRequest request) {
+        return delegate.updateProductStatus(shop, productId, request);
+    }
 }
