@@ -3,6 +3,7 @@ package com.msa.shop_orders.provider.shop.type.product.restaurant;
 import com.msa.shop_orders.common.exception.BusinessException;
 import com.msa.shop_orders.provider.shop.dto.ShopCreateProductRequest;
 import com.msa.shop_orders.provider.shop.dto.ShopProductImageRequest;
+import com.msa.shop_orders.provider.shop.dto.ShopProductPromotionRequest;
 import com.msa.shop_orders.provider.shop.dto.ShopProductVariantRequest;
 import com.msa.shop_orders.provider.shop.view.ShopShellView;
 import org.springframework.http.HttpStatus;
@@ -37,6 +38,7 @@ public class RestaurantProductRequestNormalizer {
         List<ShopProductImageRequest> normalizedImages = request.images() == null
                 ? null
                 : request.images().stream().filter(Objects::nonNull).toList();
+        ShopProductPromotionRequest normalizedPromotion = normalizePromotion(request.promotion());
 
         return new ShopCreateProductRequest(
                 request.categoryId(),
@@ -61,8 +63,30 @@ public class RestaurantProductRequestNormalizer {
                 normalizedAttributes,
                 normalizedVariants,
                 normalizedImages,
-                request.promotion(),
+                normalizedPromotion,
                 null
+        );
+    }
+
+    private ShopProductPromotionRequest normalizePromotion(ShopProductPromotionRequest promotion) {
+        if (promotion == null) {
+            return null;
+        }
+        boolean hasPayload = Boolean.TRUE.equals(promotion.enabled())
+                || promotion.startsAt() != null
+                || promotion.endsAt() != null
+                || promotion.paidAmount() != null;
+        if (!hasPayload) {
+            return null;
+        }
+        return new ShopProductPromotionRequest(
+                promotion.enabled(),
+                "DEAL",
+                promotion.startsAt(),
+                promotion.endsAt(),
+                0,
+                promotion.paidAmount(),
+                "ACTIVE"
         );
     }
 

@@ -44,7 +44,7 @@ public class SharedProviderShopProductTypeHandler implements ProviderShopProduct
 
     @Override
     public ShopProductData createProduct(ShopShellView shop, ShopCreateProductRequest request) {
-        ShopCategoryView category = requireEnabledMappedCategory(shop, request.categoryId());
+        ShopCategoryView category = requireMappedCategory(shop, request.categoryId());
         Long productId = shopProductWriteService.createProduct(shop, category, request).getId();
         return shopRuntimeViewService.loadProduct(shop, productId);
     }
@@ -66,11 +66,6 @@ public class SharedProviderShopProductTypeHandler implements ProviderShopProduct
     public ShopProductData updateProductStatus(ShopShellView shop, Long productId, ShopProductStatusUpdateRequest request) {
         shopProductWriteService.updateProductStatus(productId, request != null && request.active());
         return shopRuntimeViewService.loadProduct(shop, productId);
-    }
-
-    private ShopCategoryView requireEnabledMappedCategory(ShopShellView shop, Long categoryId) {
-        return shopCategoryViewService.findEnabledShopCategory(shop.getShopId(), shop.getShopTypeId(), categoryId)
-                .orElseThrow(() -> new BusinessException("CATEGORY_NOT_ADDED", "Selected category is not added for this shop.", HttpStatus.BAD_REQUEST));
     }
 
     private ShopCategoryView requireMappedCategory(ShopShellView shop, Long categoryId) {
