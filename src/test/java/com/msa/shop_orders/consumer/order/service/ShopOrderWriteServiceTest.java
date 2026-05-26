@@ -7,6 +7,7 @@ import com.msa.shop_orders.persistence.repository.ShopLocationRepository;
 import com.msa.shop_orders.persistence.repository.UserAddressRepository;
 import com.msa.shop_orders.provider.shop.dto.ShopProductDeliveryRuleData;
 import com.msa.shop_orders.provider.shop.service.ShopDeliveryRuleViewService;
+import com.msa.shop_orders.provider.shop.service.ShopShellViewService;
 import com.msa.shop_orders.provider.shop.view.ShopOrderView;
 import com.msa.shop_orders.provider.shop.view.ShopProductView;
 import com.msa.shop_orders.provider.shop.view.ShopShellView;
@@ -43,6 +44,8 @@ class ShopOrderWriteServiceTest {
     @Mock
     private ShopShellViewRepository shopShellViewRepository;
     @Mock
+    private ShopShellViewService shopShellViewService;
+    @Mock
     private ShopProductViewRepository shopProductViewRepository;
     @Mock
     private ShopOrderViewRepository shopOrderViewRepository;
@@ -58,6 +61,7 @@ class ShopOrderWriteServiceTest {
                 shopDeliveryRuleViewService,
                 userAddressRepository,
                 shopShellViewRepository,
+                shopShellViewService,
                 shopProductViewRepository,
                 shopOrderViewRepository,
                 mongoSequenceService
@@ -106,7 +110,7 @@ class ShopOrderWriteServiceTest {
         when(shopDeliveryRuleViewService.findPrimaryDeliveryRule(11L)).thenReturn(Optional.of(
                 new ShopProductDeliveryRuleData(301L, "DELIVERY", BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("20"), null, 30, 60)
         ));
-        when(shopShellViewRepository.findById(11L)).thenReturn(Optional.of(shop));
+        when(shopShellViewService.findByShopId(11L)).thenReturn(Optional.of(shop));
         when(mongoSequenceService.nextValue("shop-order-id")).thenReturn(501L);
         when(shopOrderViewRepository.save(any(ShopOrderView.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -139,7 +143,7 @@ class ShopOrderWriteServiceTest {
         assertEquals(11L, created.shopId());
         assertEquals(new BigDecimal("240"), created.subtotalAmount());
         assertEquals(new BigDecimal("20"), created.deliveryFeeAmount());
-        assertEquals(new BigDecimal("265"), created.totalAmount());
+        assertEquals(new BigDecimal("265.00"), created.totalAmount());
 
         ArgumentCaptor<ShopOrderView> orderCaptor = ArgumentCaptor.forClass(ShopOrderView.class);
         verify(shopOrderViewRepository).save(orderCaptor.capture());

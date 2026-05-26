@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.msa.shop_orders.consumer.storefront.dto.StorefrontDtos;
 import com.msa.shop_orders.persistence.repository.StorefrontCatalogRepository;
 import com.msa.shop_orders.provider.shop.service.ShopCategoryViewService;
+import com.msa.shop_orders.provider.shop.service.ShopShellViewService;
 import com.msa.shop_orders.provider.shop.view.ShopProductView;
 import com.msa.shop_orders.provider.shop.view.ShopShellView;
 import com.msa.shop_orders.provider.shop.view.repository.ShopProductViewRepository;
@@ -34,6 +35,8 @@ class StorefrontCatalogServiceTest {
     @Mock
     private ShopShellViewRepository shopShellViewRepository;
     @Mock
+    private ShopShellViewService shopShellViewService;
+    @Mock
     private ObjectMapper objectMapper;
 
     private StorefrontCatalogService service;
@@ -45,6 +48,7 @@ class StorefrontCatalogServiceTest {
                 shopCategoryViewService,
                 shopProductViewRepository,
                 shopShellViewRepository,
+                shopShellViewService,
                 objectMapper
         );
     }
@@ -83,6 +87,7 @@ class StorefrontCatalogServiceTest {
         product.setVariants(List.of(variant));
 
         when(shopShellViewRepository.findByApprovalStatusAndShopTypeId("APPROVED", 7L)).thenReturn(List.of(shop));
+        when(shopShellViewService.findByShopId(11L)).thenReturn(Optional.of(shop));
         when(shopProductViewRepository.findAll()).thenReturn(List.of(product));
 
         StorefrontDtos.PageResponse<StorefrontDtos.ShopProductCardData> response =

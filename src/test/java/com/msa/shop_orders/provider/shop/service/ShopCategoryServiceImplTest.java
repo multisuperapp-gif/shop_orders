@@ -11,6 +11,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -51,6 +52,7 @@ class ShopCategoryServiceImplTest {
         when(shopTypeViewService.isActiveType(7L)).thenReturn(true);
         when(shopCategoryViewService.findTypeCategoryByNormalizedName("FRESH VEG")).thenReturn(Optional.empty());
         when(shopCategoryViewService.findShopCategory(11L, 7L, 101L)).thenReturn(Optional.empty());
+        when(shopCategoryViewService.findShopCategories(11L, 7L)).thenReturn(List.of());
         when(mongoSequenceService.nextValue("shop-category-id")).thenReturn(101L);
 
         ShopCategoryData created = service.createCategory(new ShopCreateCategoryRequest("fresh   veg"));
@@ -58,8 +60,9 @@ class ShopCategoryServiceImplTest {
         assertEquals(101L, created.id());
         assertEquals("Fresh Veg", created.name());
         assertEquals(true, created.enabled());
+        assertEquals(0, created.sortOrder());
         verify(shopCategoryViewService).upsertTypeCategory(7L, 101L, "Fresh Veg", "FRESH VEG", true);
-        verify(shopCategoryViewService).upsertShopCategory(11L, 7L, 101L, "Fresh Veg", "FRESH VEG", true);
+        verify(shopCategoryViewService).upsertShopCategory(11L, 7L, 101L, "Fresh Veg", "FRESH VEG", true, 0);
     }
 
     @Test
@@ -72,6 +75,7 @@ class ShopCategoryServiceImplTest {
         existing.setCategoryId(55L);
         existing.setName("Dairy");
         existing.setNormalizedName("DAIRY");
+        existing.setSortOrder(3);
 
         when(shopContextService.currentApprovedShop()).thenReturn(shop);
         when(shopTypeViewService.isActiveType(7L)).thenReturn(true);
@@ -82,6 +86,7 @@ class ShopCategoryServiceImplTest {
         assertEquals(55L, updated.id());
         assertEquals("Dairy", updated.name());
         assertEquals(false, updated.enabled());
-        verify(shopCategoryViewService).upsertShopCategory(11L, 7L, 55L, "Dairy", "DAIRY", false);
+        assertEquals(3, updated.sortOrder());
+        verify(shopCategoryViewService).upsertShopCategory(11L, 7L, 55L, "Dairy", "DAIRY", false, 3);
     }
 }
