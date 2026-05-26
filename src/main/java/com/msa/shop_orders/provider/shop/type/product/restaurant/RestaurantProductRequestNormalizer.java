@@ -72,6 +72,9 @@ public class RestaurantProductRequestNormalizer {
         if (promotion == null) {
             return null;
         }
+        if (Boolean.FALSE.equals(promotion.enabled())) {
+            return null;
+        }
         boolean hasPayload = Boolean.TRUE.equals(promotion.enabled())
                 || promotion.startsAt() != null
                 || promotion.endsAt() != null
