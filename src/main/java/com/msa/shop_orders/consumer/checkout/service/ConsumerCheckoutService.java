@@ -1,6 +1,7 @@
 package com.msa.shop_orders.consumer.checkout.service;
 
 import com.msa.shop_orders.common.exception.BusinessException;
+import com.msa.shop_orders.common.shoptype.RestaurantItemVisibilityPolicy;
 import com.msa.shop_orders.consumer.cart.view.ConsumerCartView;
 import com.msa.shop_orders.consumer.cart.service.ConsumerCartService;
 import com.msa.shop_orders.consumer.checkout.dto.ConsumerCheckoutPreviewData;
@@ -12,6 +13,7 @@ import com.msa.shop_orders.persistence.repository.UserAddressRepository;
 import com.msa.shop_orders.provider.shop.dto.ShopProductDeliveryRuleData;
 import com.msa.shop_orders.provider.shop.service.ShopDeliveryRuleViewService;
 import com.msa.shop_orders.provider.shop.service.ShopOperatingHoursViewService;
+import com.msa.shop_orders.provider.shop.service.ShopShellViewService;
 import com.msa.shop_orders.provider.shop.view.ShopProductView;
 import com.msa.shop_orders.provider.shop.view.ShopShellView;
 import com.msa.shop_orders.provider.shop.view.repository.ShopProductViewRepository;
@@ -39,6 +41,7 @@ public class ConsumerCheckoutService {
     private final ShopLocationRepository shopLocationRepository;
     private final ShopOperatingHoursViewService shopOperatingHoursViewService;
     private final ShopShellViewRepository shopShellViewRepository;
+    private final ShopShellViewService shopShellViewService;
     private final ShopProductViewRepository shopProductViewRepository;
 
     public ConsumerCheckoutService(
@@ -49,6 +52,7 @@ public class ConsumerCheckoutService {
             ShopLocationRepository shopLocationRepository,
             ShopOperatingHoursViewService shopOperatingHoursViewService,
             ShopShellViewRepository shopShellViewRepository,
+            ShopShellViewService shopShellViewService,
             ShopProductViewRepository shopProductViewRepository
     ) {
         this.currentUserService = currentUserService;
@@ -58,6 +62,7 @@ public class ConsumerCheckoutService {
         this.shopLocationRepository = shopLocationRepository;
         this.shopOperatingHoursViewService = shopOperatingHoursViewService;
         this.shopShellViewRepository = shopShellViewRepository;
+        this.shopShellViewService = shopShellViewService;
         this.shopProductViewRepository = shopProductViewRepository;
     }
 
@@ -68,6 +73,10 @@ public class ConsumerCheckoutService {
         Long addressId = resolveDefaultAddressId(userId, request.addressId());
         AddressRow address = loadAddress(userId, addressId);
         ShopRuleRow shop = loadShopRule(cart.getShopId());
+        ShopShellView shopShell = shopShellViewService.findByShopId(cart.getShopId())
+                .or(() -> shopShellViewRepository.findById(cart.getShopId()))
+                .orElse(null);
+        validateCartItemsForRestaurantType(cart, shopShell);
         int itemCount = cart.getItems().stream().mapToInt(item -> item.getQuantity() == null ? 0 : item.getQuantity()).sum();
         BigDecimal subtotal = cart.getItems().stream()
                 .map(item -> item.getLineTotal() == null ? BigDecimal.ZERO : item.getLineTotal())
@@ -89,7 +98,6 @@ public class ConsumerCheckoutService {
                 ? BigDecimal.ZERO
                 : calculateDeliveryFee(shop, subtotal);
         BigDecimal platformFee = BigDecimal.ZERO;
-        ShopShellView shopShell = shopShellViewRepository.findById(cart.getShopId()).orElse(null);
         BigDecimal couponEligibleSubtotal = resolveCouponEligibleSubtotal(cart);
         BigDecimal discountAmount = resolveRestaurantCouponDiscount(shopShell, couponEligibleSubtotal);
         BigDecimal totalAmount = subtotal.add(deliveryFee).add(platformFee).subtract(discountAmount).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
@@ -252,6 +260,36 @@ public class ConsumerCheckoutService {
             eligibleSubtotal = eligibleSubtotal.add(defaultAmount(item.getLineTotal()));
         }
         return eligibleSubtotal.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private void validateCartItemsForRestaurantType(ConsumerCartView cart, ShopShellView shopShell) {
+        if (cart == null || shopShell == null || cart.getItems() == null || cart.getItems().isEmpty()) {
+            return;
+        }
+        Map<Long, ShopProductView> productsById = new LinkedHashMap<>();
+        for (ShopProductView product : shopProductViewRepository.findAllById(
+                cart.getItems().stream()
+                        .map(ConsumerCartView.Item::getProductId)
+                        .filter(Objects::nonNull)
+                        .distinct()
+                        .toList()
+        )) {
+            productsById.put(product.getProductId(), product);
+        }
+        boolean hasBlockedItem = cart.getItems().stream()
+                .map(ConsumerCartView.Item::getProductId)
+                .filter(Objects::nonNull)
+                .map(productsById::get)
+                .anyMatch(product -> product == null
+                        || !product.isActive()
+                        || !RestaurantItemVisibilityPolicy.isCompatible(shopShell.getRestaurantServiceType(), product.getAttributes()));
+        if (hasBlockedItem) {
+            throw new BusinessException(
+                    "PRODUCT_NOT_FOUND",
+                    "One or more cart items are no longer available for this restaurant type.",
+                    HttpStatus.NOT_FOUND
+            );
+        }
     }
 
     private BigDecimal resolveRestaurantCouponDiscount(ShopShellView shop, BigDecimal subtotal) {

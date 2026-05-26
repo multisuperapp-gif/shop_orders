@@ -1,9 +1,11 @@
 package com.msa.shop_orders.consumer.storefront.service;
 
 import com.msa.shop_orders.common.exception.BusinessException;
+import com.msa.shop_orders.common.shoptype.RestaurantItemVisibilityPolicy;
 import com.msa.shop_orders.consumer.storefront.dto.StorefrontDtos;
 import com.msa.shop_orders.persistence.repository.StorefrontCatalogRepository;
 import com.msa.shop_orders.provider.shop.service.ShopCategoryViewService;
+import com.msa.shop_orders.provider.shop.service.ShopShellViewService;
 import com.msa.shop_orders.provider.shop.view.ShopProductView;
 import com.msa.shop_orders.provider.shop.view.ShopShellView;
 import com.msa.shop_orders.provider.shop.view.repository.ShopProductViewRepository;
@@ -32,6 +34,7 @@ public class StorefrontCatalogService {
     private final ShopCategoryViewService shopCategoryViewService;
     private final ShopProductViewRepository shopProductViewRepository;
     private final ShopShellViewRepository shopShellViewRepository;
+    private final ShopShellViewService shopShellViewService;
     private final ObjectMapper objectMapper;
 
     public StorefrontCatalogService(
@@ -39,12 +42,14 @@ public class StorefrontCatalogService {
             ShopCategoryViewService shopCategoryViewService,
             ShopProductViewRepository shopProductViewRepository,
             ShopShellViewRepository shopShellViewRepository,
+            ShopShellViewService shopShellViewService,
             ObjectMapper objectMapper
     ) {
         this.storefrontCatalogRepository = storefrontCatalogRepository;
         this.shopCategoryViewService = shopCategoryViewService;
         this.shopProductViewRepository = shopProductViewRepository;
         this.shopShellViewRepository = shopShellViewRepository;
+        this.shopShellViewService = shopShellViewService;
         this.objectMapper = objectMapper;
     }
 
@@ -89,7 +94,7 @@ public class StorefrontCatalogService {
                 .orElseThrow(() -> new BusinessException("PRODUCT_NOT_FOUND", "Product not found", HttpStatus.NOT_FOUND));
         ShopShellView shop = loadVisibleShop(product.getShopId())
                 .orElseThrow(() -> new BusinessException("PRODUCT_NOT_FOUND", "Product not found", HttpStatus.NOT_FOUND));
-        if (!isActiveProduct(product)) {
+        if (!isActiveProduct(product) || !isVisibleProductForShop(shop, product)) {
             throw new BusinessException("PRODUCT_NOT_FOUND", "Product not found", HttpStatus.NOT_FOUND);
         }
         List<StorefrontDtos.ProductImageData> images = loadImages(product);
@@ -318,6 +323,7 @@ public class StorefrontCatalogService {
                 .filter(product -> shopId == null || Objects.equals(product.getShopId(), shopId))
                 .filter(product -> categoryId == null || Objects.equals(product.getCategoryId(), categoryId))
                 .filter(product -> shops.containsKey(product.getShopId()))
+                .filter(product -> isVisibleProductForShop(shops.get(product.getShopId()), product))
                 .filter(product -> matchesSearch(product, shops.get(product.getShopId()), normalizedSearch))
                 .sorted(productComparator())
                 .map(product -> new ProductWithShop(product, shops.get(product.getShopId())))
@@ -338,10 +344,11 @@ public class StorefrontCatalogService {
             if (shell == null || shell.getShopId() == null) {
                 continue;
             }
-            if (!isVisibleShop(shell)) {
+            ShopShellView latestShell = shopShellViewService.findByShopId(shell.getShopId()).orElse(shell);
+            if (!isVisibleShop(latestShell)) {
                 continue;
             }
-            visible.put(shell.getShopId(), shell);
+            visible.put(latestShell.getShopId(), latestShell);
         }
         return visible;
     }
@@ -360,6 +367,12 @@ public class StorefrontCatalogService {
 
     private boolean isActiveProduct(ShopProductView product) {
         return product != null && product.isActive();
+    }
+
+    private boolean isVisibleProductForShop(ShopShellView shop, ShopProductView product) {
+        return shop != null
+                && product != null
+                && RestaurantItemVisibilityPolicy.isCompatible(shop.getRestaurantServiceType(), product.getAttributes());
     }
 
     private String normalizeSearch(String search) {

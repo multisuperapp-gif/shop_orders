@@ -1,6 +1,7 @@
 package com.msa.shop_orders.consumer.cart.service;
 
 import com.msa.shop_orders.common.exception.BusinessException;
+import com.msa.shop_orders.common.shoptype.RestaurantItemVisibilityPolicy;
 import com.msa.shop_orders.consumer.cart.dto.ConsumerCartAddItemRequest;
 import com.msa.shop_orders.consumer.cart.dto.ConsumerCartData;
 import com.msa.shop_orders.consumer.cart.dto.ConsumerCartItemData;
@@ -11,6 +12,7 @@ import com.msa.shop_orders.persistence.entity.FileEntity;
 import com.msa.shop_orders.persistence.entity.ProductOptionEntity;
 import com.msa.shop_orders.persistence.repository.FileRepository;
 import com.msa.shop_orders.persistence.repository.ProductOptionRepository;
+import com.msa.shop_orders.provider.shop.service.ShopShellViewService;
 import com.msa.shop_orders.provider.shop.view.ShopProductView;
 import com.msa.shop_orders.provider.shop.view.repository.ShopProductViewRepository;
 import com.msa.shop_orders.provider.shop.view.ShopShellView;
@@ -48,6 +50,7 @@ public class ConsumerCartService {
     private final ProductOptionRepository productOptionRepository;
     private final FileRepository fileRepository;
     private final ShopShellViewRepository shopShellViewRepository;
+    private final ShopShellViewService shopShellViewService;
 
     public ConsumerCartService(
             ConsumerCartViewRepository consumerCartViewRepository,
@@ -55,7 +58,8 @@ public class ConsumerCartService {
             ShopProductViewRepository shopProductViewRepository,
             ProductOptionRepository productOptionRepository,
             FileRepository fileRepository,
-            ShopShellViewRepository shopShellViewRepository
+            ShopShellViewRepository shopShellViewRepository,
+            ShopShellViewService shopShellViewService
     ) {
         this.consumerCartViewRepository = consumerCartViewRepository;
         this.currentUserService = currentUserService;
@@ -63,6 +67,7 @@ public class ConsumerCartService {
         this.productOptionRepository = productOptionRepository;
         this.fileRepository = fileRepository;
         this.shopShellViewRepository = shopShellViewRepository;
+        this.shopShellViewService = shopShellViewService;
     }
 
     @Transactional(readOnly = true)
@@ -261,9 +266,13 @@ public class ConsumerCartService {
         ShopProductView product = shopProductViewRepository.findById(productId)
                 .filter(ShopProductView::isActive)
                 .orElseThrow(() -> new BusinessException("PRODUCT_NOT_FOUND", "Product or variant not found.", HttpStatus.NOT_FOUND));
-        ShopShellView shop = shopShellViewRepository.findById(product.getShopId())
+        ShopShellView shop = shopShellViewService.findByShopId(product.getShopId())
+                .or(() -> shopShellViewRepository.findById(product.getShopId()))
                 .filter(candidate -> "APPROVED".equalsIgnoreCase(candidate.getApprovalStatus()))
                 .orElseThrow(() -> new BusinessException("SHOP_NOT_FOUND", "Shop not found.", HttpStatus.NOT_FOUND));
+        if (!RestaurantItemVisibilityPolicy.isCompatible(shop.getRestaurantServiceType(), product.getAttributes())) {
+            throw new BusinessException("PRODUCT_NOT_FOUND", "Product or variant not found.", HttpStatus.NOT_FOUND);
+        }
         List<ShopProductView.Variant> variants = Optional.ofNullable(product.getVariants()).orElse(List.of()).stream()
                 .filter(ShopProductView.Variant::isActive)
                 .toList();

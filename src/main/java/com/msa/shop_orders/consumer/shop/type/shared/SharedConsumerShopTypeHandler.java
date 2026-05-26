@@ -1,6 +1,7 @@
 package com.msa.shop_orders.consumer.shop.type.shared;
 
 import com.msa.shop_orders.common.exception.BusinessException;
+import com.msa.shop_orders.common.shoptype.RestaurantItemVisibilityPolicy;
 import com.msa.shop_orders.common.shoptype.ShopTypeFamily;
 import com.msa.shop_orders.consumer.shop.dto.ConsumerShopCategoryData;
 import com.msa.shop_orders.consumer.shop.dto.ConsumerShopDetailData;
@@ -10,6 +11,7 @@ import com.msa.shop_orders.consumer.shop.type.ConsumerShopTypeHandler;
 import com.msa.shop_orders.provider.shop.dto.ShopProductData;
 import com.msa.shop_orders.provider.shop.service.ShopCategoryViewService;
 import com.msa.shop_orders.provider.shop.service.ShopRuntimeViewService;
+import com.msa.shop_orders.provider.shop.service.ShopShellViewService;
 import com.msa.shop_orders.provider.shop.service.ShopTypeViewService;
 import com.msa.shop_orders.provider.shop.view.ShopCategoryView;
 import com.msa.shop_orders.provider.shop.view.ShopShellView;
@@ -28,17 +30,20 @@ public class SharedConsumerShopTypeHandler implements ConsumerShopTypeHandler {
     private final ShopTypeViewService shopTypeViewService;
     private final ShopCategoryViewService shopCategoryViewService;
     private final ShopRuntimeViewService shopRuntimeViewService;
+    private final ShopShellViewService shopShellViewService;
 
     public SharedConsumerShopTypeHandler(
             ShopShellViewRepository shopShellViewRepository,
             ShopTypeViewService shopTypeViewService,
             ShopCategoryViewService shopCategoryViewService,
-            ShopRuntimeViewService shopRuntimeViewService
+            ShopRuntimeViewService shopRuntimeViewService,
+            ShopShellViewService shopShellViewService
     ) {
         this.shopShellViewRepository = shopShellViewRepository;
         this.shopTypeViewService = shopTypeViewService;
         this.shopCategoryViewService = shopCategoryViewService;
         this.shopRuntimeViewService = shopRuntimeViewService;
+        this.shopShellViewService = shopShellViewService;
     }
 
     @Override
@@ -87,21 +92,25 @@ public class SharedConsumerShopTypeHandler implements ConsumerShopTypeHandler {
     @Override
     public List<ShopProductData> shopProducts(Long shopId, Long categoryId) {
         ShopShellView shop = requireApprovedShop(shopId);
-        return shopRuntimeViewService.loadProducts(shop, categoryId).stream().filter(ShopProductData::active).toList();
+        return shopRuntimeViewService.loadProducts(shop, categoryId).stream()
+                .filter(ShopProductData::active)
+                .filter(product -> RestaurantItemVisibilityPolicy.isCompatible(shop.getRestaurantServiceType(), product.attributes()))
+                .toList();
     }
 
     @Override
     public ShopProductData shopProductDetail(Long shopId, Long productId) {
         ShopShellView shop = requireApprovedShop(shopId);
         ShopProductData data = shopRuntimeViewService.loadProduct(shop, productId);
-        if (!data.active()) {
+        if (!data.active() || !RestaurantItemVisibilityPolicy.isCompatible(shop.getRestaurantServiceType(), data.attributes())) {
             throw new BusinessException("PRODUCT_NOT_FOUND", "Product not found.", HttpStatus.NOT_FOUND);
         }
         return data;
     }
 
     private ShopShellView requireApprovedShop(Long shopId) {
-        ShopShellView shop = shopShellViewRepository.findById(shopId)
+        ShopShellView shop = shopShellViewService.findByShopId(shopId)
+                .or(() -> shopShellViewRepository.findById(shopId))
                 .orElseThrow(() -> new BusinessException("SHOP_NOT_FOUND", "Shop not found.", HttpStatus.NOT_FOUND));
         if (!isApprovedShop(shop)) {
             throw new BusinessException("SHOP_NOT_FOUND", "Shop not found.", HttpStatus.NOT_FOUND);
@@ -118,6 +127,7 @@ public class SharedConsumerShopTypeHandler implements ConsumerShopTypeHandler {
                 ? shopShellViewRepository.findByApprovalStatus("APPROVED")
                 : shopShellViewRepository.findByApprovalStatusAndShopTypeId("APPROVED", shopTypeId);
         return shells.stream()
+                .map(shell -> shopShellViewService.findByShopId(shell.getShopId()).orElse(shell))
                 .filter(shell -> search == null || containsIgnoreCase(shell.getShopName(), search) || containsIgnoreCase(shell.getShopCode(), search))
                 .limit(200)
                 .toList();

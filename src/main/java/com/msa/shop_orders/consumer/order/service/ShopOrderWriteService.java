@@ -1,6 +1,7 @@
 package com.msa.shop_orders.consumer.order.service;
 
 import com.msa.shop_orders.common.exception.BusinessException;
+import com.msa.shop_orders.common.shoptype.RestaurantItemVisibilityPolicy;
 import com.msa.shop_orders.common.mongo.MongoSequenceService;
 import com.msa.shop_orders.persistence.entity.ShopLocationEntity;
 import com.msa.shop_orders.persistence.entity.UserAddressEntity;
@@ -8,6 +9,7 @@ import com.msa.shop_orders.persistence.repository.ShopLocationRepository;
 import com.msa.shop_orders.persistence.repository.UserAddressRepository;
 import com.msa.shop_orders.provider.shop.dto.ShopProductDeliveryRuleData;
 import com.msa.shop_orders.provider.shop.service.ShopDeliveryRuleViewService;
+import com.msa.shop_orders.provider.shop.service.ShopShellViewService;
 import com.msa.shop_orders.provider.shop.view.ShopOrderView;
 import com.msa.shop_orders.provider.shop.view.ShopProductView;
 import com.msa.shop_orders.provider.shop.view.ShopShellView;
@@ -33,6 +35,7 @@ public class ShopOrderWriteService {
     private final ShopDeliveryRuleViewService shopDeliveryRuleViewService;
     private final UserAddressRepository userAddressRepository;
     private final ShopShellViewRepository shopShellViewRepository;
+    private final ShopShellViewService shopShellViewService;
     private final ShopProductViewRepository shopProductViewRepository;
     private final ShopOrderViewRepository shopOrderViewRepository;
     private final MongoSequenceService mongoSequenceService;
@@ -42,6 +45,7 @@ public class ShopOrderWriteService {
             ShopDeliveryRuleViewService shopDeliveryRuleViewService,
             UserAddressRepository userAddressRepository,
             ShopShellViewRepository shopShellViewRepository,
+            ShopShellViewService shopShellViewService,
             ShopProductViewRepository shopProductViewRepository,
             ShopOrderViewRepository shopOrderViewRepository,
             MongoSequenceService mongoSequenceService
@@ -50,6 +54,7 @@ public class ShopOrderWriteService {
         this.shopDeliveryRuleViewService = shopDeliveryRuleViewService;
         this.userAddressRepository = userAddressRepository;
         this.shopShellViewRepository = shopShellViewRepository;
+        this.shopShellViewService = shopShellViewService;
         this.shopProductViewRepository = shopProductViewRepository;
         this.shopOrderViewRepository = shopOrderViewRepository;
         this.mongoSequenceService = mongoSequenceService;
@@ -84,7 +89,10 @@ public class ShopOrderWriteService {
                 .orElseThrow(() -> new BusinessException("SHOP_NOT_FOUND", "Primary approved shop location is not available.", HttpStatus.BAD_REQUEST));
         ShopProductDeliveryRuleData deliveryRule = shopDeliveryRuleViewService.findPrimaryDeliveryRule(shopId)
                 .orElse(new ShopProductDeliveryRuleData(primaryLocation.getId(), "DELIVERY", BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO, new BigDecimal("999999999.99"), 30, 60));
-        ShopShellView shop = shopShellViewRepository.findById(shopId).orElse(null);
+        ShopShellView shop = shopShellViewService.findByShopId(shopId)
+                .or(() -> shopShellViewRepository.findById(shopId))
+                .orElse(null);
+        validateItemsForRestaurantType(shop, selectionsByVariantId);
 
         BigDecimal subtotal = BigDecimal.ZERO;
         List<CreatedOrderItem> createdItems = new ArrayList<>();
@@ -198,6 +206,27 @@ public class ShopOrderWriteService {
             if (item == null || item.variantId() == null || item.quantity() == null || item.quantity() < 1) {
                 throw new BusinessException("ORDER_INVALID", "Order item is incomplete.", HttpStatus.BAD_REQUEST);
             }
+        }
+    }
+
+    private void validateItemsForRestaurantType(
+            ShopShellView shop,
+            Map<Long, VariantSelection> selectionsByVariantId
+    ) {
+        if (shop == null || selectionsByVariantId == null || selectionsByVariantId.isEmpty()) {
+            return;
+        }
+        boolean hasBlockedItem = selectionsByVariantId.values().stream()
+                .map(VariantSelection::product)
+                .anyMatch(product -> product == null
+                        || !product.isActive()
+                        || !RestaurantItemVisibilityPolicy.isCompatible(shop.getRestaurantServiceType(), product.getAttributes()));
+        if (hasBlockedItem) {
+            throw new BusinessException(
+                    "PRODUCT_NOT_FOUND",
+                    "One or more selected items are no longer available for this restaurant type.",
+                    HttpStatus.NOT_FOUND
+            );
         }
     }
 
