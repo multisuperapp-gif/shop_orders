@@ -15,6 +15,7 @@ public record ConsumerCheckoutPreviewData(
         BigDecimal subtotal,
         BigDecimal deliveryFee,
         BigDecimal platformFee,
+        BigDecimal discountAmount,
         BigDecimal totalAmount,
         String currencyCode,
         boolean shopOpen,

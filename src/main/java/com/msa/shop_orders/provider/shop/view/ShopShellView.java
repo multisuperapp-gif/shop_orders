@@ -1,6 +1,7 @@
 package com.msa.shop_orders.provider.shop.view;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
 
@@ -20,6 +21,7 @@ public class ShopShellView {
     private String operationalStatus;
     private BigDecimal avgRating;
     private Integer totalReviews;
+    private RestaurantCoupon restaurantCoupon;
 
     public Long getShopId() {
         return shopId;
@@ -123,5 +125,97 @@ public class ShopShellView {
 
     public void setTotalReviews(Integer totalReviews) {
         this.totalReviews = totalReviews;
+    }
+
+    public RestaurantCoupon getRestaurantCoupon() {
+        return restaurantCoupon;
+    }
+
+    public void setRestaurantCoupon(RestaurantCoupon restaurantCoupon) {
+        this.restaurantCoupon = restaurantCoupon;
+    }
+
+    public static class RestaurantCoupon {
+        private String couponCode;
+        private String couponTitle;
+        private String discountType;
+        private BigDecimal discountValue;
+        private BigDecimal minOrderAmount;
+        private BigDecimal maxDiscountAmount;
+        private LocalDateTime startsAt;
+        private LocalDateTime endsAt;
+        private Boolean active;
+
+        public String getCouponCode() {
+            return couponCode;
+        }
+
+        public void setCouponCode(String couponCode) {
+            this.couponCode = couponCode;
+        }
+
+        public String getCouponTitle() {
+            return couponTitle;
+        }
+
+        public void setCouponTitle(String couponTitle) {
+            this.couponTitle = couponTitle;
+        }
+
+        public String getDiscountType() {
+            return discountType;
+        }
+
+        public void setDiscountType(String discountType) {
+            this.discountType = discountType;
+        }
+
+        public BigDecimal getDiscountValue() {
+            return discountValue;
+        }
+
+        public void setDiscountValue(BigDecimal discountValue) {
+            this.discountValue = discountValue;
+        }
+
+        public BigDecimal getMinOrderAmount() {
+            return minOrderAmount;
+        }
+
+        public void setMinOrderAmount(BigDecimal minOrderAmount) {
+            this.minOrderAmount = minOrderAmount;
+        }
+
+        public BigDecimal getMaxDiscountAmount() {
+            return maxDiscountAmount;
+        }
+
+        public void setMaxDiscountAmount(BigDecimal maxDiscountAmount) {
+            this.maxDiscountAmount = maxDiscountAmount;
+        }
+
+        public LocalDateTime getStartsAt() {
+            return startsAt;
+        }
+
+        public void setStartsAt(LocalDateTime startsAt) {
+            this.startsAt = startsAt;
+        }
+
+        public LocalDateTime getEndsAt() {
+            return endsAt;
+        }
+
+        public void setEndsAt(LocalDateTime endsAt) {
+            this.endsAt = endsAt;
+        }
+
+        public Boolean getActive() {
+            return active;
+        }
+
+        public void setActive(Boolean active) {
+            this.active = active;
+        }
     }
 }

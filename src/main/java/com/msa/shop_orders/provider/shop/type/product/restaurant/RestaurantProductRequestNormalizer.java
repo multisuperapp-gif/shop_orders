@@ -62,7 +62,7 @@ public class RestaurantProductRequestNormalizer {
                 normalizedVariants,
                 normalizedImages,
                 request.promotion(),
-                request.coupon()
+                null
         );
     }
 
@@ -90,14 +90,6 @@ public class RestaurantProductRequestNormalizer {
         String spiceLevel = normalizeOptionalOption(readString(attributes, "spiceLevel"), SPICE_LEVELS, "SPICE_LEVEL_INVALID");
         if (spiceLevel != null) {
             normalized.put("spiceLevel", spiceLevel);
-        }
-
-        Integer prepTimeMinutes = readInteger(attributes, "prepTimeMinutes");
-        if (prepTimeMinutes != null) {
-            if (prepTimeMinutes < 0) {
-                throw new BusinessException("PREP_TIME_INVALID", "Preparation time must be zero or positive.", HttpStatus.BAD_REQUEST);
-            }
-            normalized.put("prepTimeMinutes", prepTimeMinutes);
         }
 
         Integer maxOrderQuantity = readInteger(attributes, "maxOrderQuantity");

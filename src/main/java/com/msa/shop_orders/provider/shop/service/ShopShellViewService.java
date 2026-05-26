@@ -50,7 +50,8 @@ public class ShopShellViewService {
     }
 
     private ShopShellView toShellView(ShopEntity shop) {
-        ShopShellView shell = new ShopShellView();
+        ShopShellView shell = shopShellViewRepository.findById(shop.getId())
+                .orElseGet(ShopShellView::new);
         shell.setShopId(shop.getId());
         shell.setOwnerUserId(shop.getOwnerUserId());
         shell.setShopCode(shop.getShopCode());

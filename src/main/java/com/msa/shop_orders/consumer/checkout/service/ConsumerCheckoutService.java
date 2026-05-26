@@ -12,10 +12,13 @@ import com.msa.shop_orders.persistence.repository.UserAddressRepository;
 import com.msa.shop_orders.provider.shop.dto.ShopProductDeliveryRuleData;
 import com.msa.shop_orders.provider.shop.service.ShopDeliveryRuleViewService;
 import com.msa.shop_orders.provider.shop.service.ShopOperatingHoursViewService;
+import com.msa.shop_orders.provider.shop.view.ShopShellView;
+import com.msa.shop_orders.provider.shop.view.repository.ShopShellViewRepository;
 import com.msa.shop_orders.security.CurrentUserService;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.LocalTime;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import org.springframework.http.HttpStatus;
@@ -30,6 +33,7 @@ public class ConsumerCheckoutService {
     private final UserAddressRepository userAddressRepository;
     private final ShopLocationRepository shopLocationRepository;
     private final ShopOperatingHoursViewService shopOperatingHoursViewService;
+    private final ShopShellViewRepository shopShellViewRepository;
 
     public ConsumerCheckoutService(
             CurrentUserService currentUserService,
@@ -37,7 +41,8 @@ public class ConsumerCheckoutService {
             ShopDeliveryRuleViewService shopDeliveryRuleViewService,
             UserAddressRepository userAddressRepository,
             ShopLocationRepository shopLocationRepository,
-            ShopOperatingHoursViewService shopOperatingHoursViewService
+            ShopOperatingHoursViewService shopOperatingHoursViewService,
+            ShopShellViewRepository shopShellViewRepository
     ) {
         this.currentUserService = currentUserService;
         this.consumerCartService = consumerCartService;
@@ -45,6 +50,7 @@ public class ConsumerCheckoutService {
         this.userAddressRepository = userAddressRepository;
         this.shopLocationRepository = shopLocationRepository;
         this.shopOperatingHoursViewService = shopOperatingHoursViewService;
+        this.shopShellViewRepository = shopShellViewRepository;
     }
 
     @Transactional(readOnly = true)
@@ -75,7 +81,9 @@ public class ConsumerCheckoutService {
                 ? BigDecimal.ZERO
                 : calculateDeliveryFee(shop, subtotal);
         BigDecimal platformFee = BigDecimal.ZERO;
-        BigDecimal totalAmount = subtotal.add(deliveryFee).add(platformFee).setScale(2, RoundingMode.HALF_UP);
+        ShopShellView shopShell = shopShellViewRepository.findById(cart.getShopId()).orElse(null);
+        BigDecimal discountAmount = resolveRestaurantCouponDiscount(shopShell, subtotal);
+        BigDecimal totalAmount = subtotal.add(deliveryFee).add(platformFee).subtract(discountAmount).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
 
         return new ConsumerCheckoutPreviewData(
                 userId,
@@ -89,6 +97,7 @@ public class ConsumerCheckoutService {
                 subtotal,
                 deliveryFee,
                 platformFee,
+                discountAmount,
                 totalAmount,
                 cart.getCurrencyCode(),
                 shop.openNow(),
@@ -206,6 +215,45 @@ public class ConsumerCheckoutService {
             return BigDecimal.ZERO;
         }
         return shop.deliveryFee().setScale(2, RoundingMode.HALF_UP);
+    }
+
+    private BigDecimal resolveRestaurantCouponDiscount(ShopShellView shop, BigDecimal subtotal) {
+        if (shop == null || shop.getRestaurantCoupon() == null || subtotal == null) {
+            return BigDecimal.ZERO;
+        }
+        ShopShellView.RestaurantCoupon coupon = shop.getRestaurantCoupon();
+        if (!Boolean.TRUE.equals(coupon.getActive())) {
+            return BigDecimal.ZERO;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        if (coupon.getStartsAt() == null || coupon.getEndsAt() == null
+                || now.isBefore(coupon.getStartsAt()) || now.isAfter(coupon.getEndsAt())) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal minOrderAmount = defaultAmount(coupon.getMinOrderAmount());
+        if (subtotal.compareTo(minOrderAmount) < 0) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal discountValue = defaultAmount(coupon.getDiscountValue());
+        if (discountValue.compareTo(BigDecimal.ZERO) <= 0) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal discountAmount;
+        if ("FLAT".equalsIgnoreCase(coupon.getDiscountType())) {
+            discountAmount = discountValue;
+        } else {
+            discountAmount = subtotal.multiply(discountValue)
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        }
+        BigDecimal maxDiscountAmount = coupon.getMaxDiscountAmount();
+        if (maxDiscountAmount != null && maxDiscountAmount.compareTo(BigDecimal.ZERO) > 0
+                && discountAmount.compareTo(maxDiscountAmount) > 0) {
+            discountAmount = maxDiscountAmount;
+        }
+        if (discountAmount.compareTo(subtotal) > 0) {
+            return subtotal.setScale(2, RoundingMode.HALF_UP);
+        }
+        return discountAmount.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
     }
 
     private BigDecimal defaultAmount(BigDecimal value) {
