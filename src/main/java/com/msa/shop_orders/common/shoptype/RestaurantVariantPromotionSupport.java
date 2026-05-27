@@ -14,6 +14,13 @@ public final class RestaurantVariantPromotionSupport {
     }
 
     public static boolean hasActivePromotion(ShopProductView product) {
+        if (hasVariantSpecificPromotion(product)) {
+            List<ShopProductView.Variant> variants = product == null ? null : product.getVariants();
+            if (variants == null) {
+                return false;
+            }
+            return variants.stream().anyMatch(RestaurantVariantPromotionSupport::hasActiveVariantPromotion);
+        }
         if (product == null || product.getPromotion() == null) {
             return false;
         }
@@ -29,11 +36,14 @@ public final class RestaurantVariantPromotionSupport {
     }
 
     public static boolean hasActivePromotion(ShopProductView product, ShopProductView.Variant variant) {
-        if (!hasActivePromotion(product) || variant == null) {
+        if (variant == null) {
             return false;
         }
         if (hasVariantSpecificPromotion(product)) {
-            return variantPromotionPaidAmount(variant) != null;
+            return hasActiveVariantPromotion(variant);
+        }
+        if (!hasActivePromotion(product)) {
+            return false;
         }
         return defaultAmount(product.getPromotion().getPaidAmount()).compareTo(BigDecimal.ZERO) > 0;
     }
@@ -72,6 +82,37 @@ public final class RestaurantVariantPromotionSupport {
         return variants != null && variants.size() > 1;
     }
 
+    private static boolean hasActiveVariantPromotion(ShopProductView.Variant variant) {
+        if (!variantPromotionEnabled(variant)) {
+            return false;
+        }
+        BigDecimal paidAmount = variantPromotionPaidAmount(variant);
+        if (paidAmount == null) {
+            return false;
+        }
+        LocalDateTime startsAt = variantPromotionDate(variant, "promotionStartsAt");
+        LocalDateTime endsAt = variantPromotionDate(variant, "promotionEndsAt");
+        LocalDateTime now = LocalDateTime.now();
+        return startsAt != null
+                && endsAt != null
+                && !now.isBefore(startsAt)
+                && !now.isAfter(endsAt);
+    }
+
+    private static boolean variantPromotionEnabled(ShopProductView.Variant variant) {
+        if (variant == null || variant.getAttributes() == null) {
+            return false;
+        }
+        Object raw = variant.getAttributes().get("promotionEnabled");
+        if (raw instanceof Boolean value) {
+            return value;
+        }
+        if (raw instanceof String value) {
+            return "true".equalsIgnoreCase(value.trim());
+        }
+        return false;
+    }
+
     private static BigDecimal variantPromotionPaidAmount(ShopProductView.Variant variant) {
         if (variant == null) {
             return null;
@@ -91,6 +132,24 @@ public final class RestaurantVariantPromotionSupport {
             try {
                 return normalizePromotionPrice(new BigDecimal(value.trim()), variant);
             } catch (NumberFormatException ignored) {
+                return null;
+            }
+        }
+        return null;
+    }
+
+    private static LocalDateTime variantPromotionDate(ShopProductView.Variant variant, String key) {
+        if (variant == null || variant.getAttributes() == null) {
+            return null;
+        }
+        Object raw = variant.getAttributes().get(key);
+        if (raw instanceof LocalDateTime value) {
+            return value;
+        }
+        if (raw instanceof String value) {
+            try {
+                return LocalDateTime.parse(value.trim());
+            } catch (Exception ignored) {
                 return null;
             }
         }

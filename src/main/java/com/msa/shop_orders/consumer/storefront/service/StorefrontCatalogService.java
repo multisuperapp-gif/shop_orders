@@ -526,6 +526,10 @@ public class StorefrontCatalogService {
     }
 
     private int promotionScore(ShopProductView product) {
+        if (RestaurantVariantPromotionSupport.hasActivePromotion(product)
+                && (product.getVariants() == null || product.getVariants().size() > 1)) {
+            return 1;
+        }
         ShopProductView.Promotion promotion = product.getPromotion();
         if (promotion == null || !StringUtils.hasText(promotion.getStatus())) {
             return 0;
