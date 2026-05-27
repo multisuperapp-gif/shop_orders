@@ -198,6 +198,7 @@ public class ShopProductWriteService {
         document.setCategoryId(category.getCategoryId());
         document.setCategoryName(category.getName());
         document.setSku(sku);
+        document.setProductCode(sku);
         document.setAvgRating(BigDecimal.ZERO.setScale(2));
         document.setTotalReviews(0);
         document.setTotalOrders(0);
@@ -220,6 +221,9 @@ public class ShopProductWriteService {
             }
             document.setSku(normalizedSku);
         }
+        if (document.getSku() != null && !document.getSku().isBlank()) {
+            document.setProductCode(document.getSku());
+        }
         document.setUpdatedAt(LocalDateTime.now());
         document.setDeliveryRule(toDeliveryRuleDocument(shop.getShopId()));
         applyRequestToProductDocument(document, request, true);
@@ -235,6 +239,7 @@ public class ShopProductWriteService {
         duplicate.setCategoryId(source.getCategoryId());
         duplicate.setCategoryName(source.getCategoryName());
         duplicate.setSku(resolveDuplicateSku(source.getSku()));
+        duplicate.setProductCode(duplicate.getSku());
         duplicate.setItemName(resolveDuplicateItemName(source.getItemName()));
         duplicate.setShortDescription(source.getShortDescription());
         duplicate.setDescription(source.getDescription());
@@ -310,6 +315,9 @@ public class ShopProductWriteService {
     }
 
     private void applyRequestToProductDocument(ShopProductView document, ShopCreateProductRequest request, boolean updateMode) {
+        if (document.getSku() != null && !document.getSku().isBlank()) {
+            document.setProductCode(document.getSku());
+        }
         document.setItemName(normalizeDisplayText(request.itemName()));
         document.setShortDescription(blankToNull(request.shortDescription()));
         document.setDescription(blankToNull(request.description()));

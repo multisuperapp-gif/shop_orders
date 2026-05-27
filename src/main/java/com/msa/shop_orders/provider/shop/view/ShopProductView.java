@@ -26,6 +26,7 @@ public class ShopProductView {
     @Indexed
     private Long categoryId;
 
+    private String productCode;
     private String categoryName;
     private String sku;
     private String itemName;
