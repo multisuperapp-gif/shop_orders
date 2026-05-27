@@ -17,6 +17,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.math.BigDecimal;
 
 @Component
 public class RestaurantProductRequestNormalizer {
@@ -38,7 +39,7 @@ public class RestaurantProductRequestNormalizer {
         List<ShopProductImageRequest> normalizedImages = request.images() == null
                 ? null
                 : request.images().stream().filter(Objects::nonNull).toList();
-        ShopProductPromotionRequest normalizedPromotion = normalizePromotion(request.promotion());
+        ShopProductPromotionRequest normalizedPromotion = normalizePromotion(request.promotion(), request.sellingPrice(), normalizedVariants);
 
         return new ShopCreateProductRequest(
                 request.categoryId(),
@@ -68,7 +69,11 @@ public class RestaurantProductRequestNormalizer {
         );
     }
 
-    private ShopProductPromotionRequest normalizePromotion(ShopProductPromotionRequest promotion) {
+    private ShopProductPromotionRequest normalizePromotion(
+            ShopProductPromotionRequest promotion,
+            BigDecimal sellingPrice,
+            List<ShopProductVariantRequest> normalizedVariants
+    ) {
         if (promotion == null) {
             return null;
         }
@@ -81,6 +86,19 @@ public class RestaurantProductRequestNormalizer {
                 || promotion.paidAmount() != null;
         if (!hasPayload) {
             return null;
+        }
+        boolean hasMultipleVariants = normalizedVariants != null && normalizedVariants.size() > 1;
+        if (!hasMultipleVariants) {
+            BigDecimal dealPrice = promotion.paidAmount();
+            if (dealPrice != null
+                    && sellingPrice != null
+                    && dealPrice.compareTo(sellingPrice) >= 0) {
+                throw new BusinessException(
+                        "PROMOTION_PRICE_INVALID",
+                        "Deal price must be lower than the current selling price.",
+                        HttpStatus.BAD_REQUEST
+                );
+            }
         }
         return new ShopProductPromotionRequest(
                 promotion.enabled(),
@@ -171,10 +189,11 @@ public class RestaurantProductRequestNormalizer {
             );
             LinkedHashMap<String, Object> variantAttributes = new LinkedHashMap<>();
             if (variant.attributes() != null) {
-                variantAttributes.putAll(variant.attributes());
-            }
-            variantAttributes.put("serviceMode", "RESTAURANT");
-            normalized.add(new ShopProductVariantRequest(
+            variantAttributes.putAll(variant.attributes());
+        }
+        variantAttributes.put("serviceMode", "RESTAURANT");
+        validateVariantPromotion(variant, variantAttributes);
+        normalized.add(new ShopProductVariantRequest(
                     variant.variantId(),
                     variant.clientKey(),
                     normalizeDisplayText(label),
@@ -194,6 +213,30 @@ public class RestaurantProductRequestNormalizer {
             ));
         }
         return normalized.isEmpty() ? null : normalized;
+    }
+
+    private void validateVariantPromotion(
+            ShopProductVariantRequest variant,
+            Map<String, Object> variantAttributes
+    ) {
+        if (!readBoolean(variantAttributes, "promotionEnabled")) {
+            return;
+        }
+        BigDecimal dealPrice = readBigDecimal(variantAttributes, "promotionPaidAmount");
+        if (dealPrice == null) {
+            throw new BusinessException(
+                    "VARIANT_PROMOTION_PRICE_REQUIRED",
+                    "Each promoted size needs a valid deal price.",
+                    HttpStatus.BAD_REQUEST
+            );
+        }
+        if (variant.sellingPrice() != null && dealPrice.compareTo(variant.sellingPrice()) >= 0) {
+            throw new BusinessException(
+                    "VARIANT_PROMOTION_PRICE_INVALID",
+                    "Deal price must be lower than the current selling price for each promoted size.",
+                    HttpStatus.BAD_REQUEST
+            );
+        }
     }
 
     private List<String> normalizeAddonOptions(Object rawValue) {
@@ -256,6 +299,52 @@ public class RestaurantProductRequestNormalizer {
         } catch (NumberFormatException exception) {
             throw new BusinessException(key.toUpperCase(Locale.ROOT) + "_INVALID", "Invalid value for " + key + ".", HttpStatus.BAD_REQUEST);
         }
+    }
+
+    private boolean readBoolean(Map<String, Object> attributes, String key) {
+        if (attributes == null) {
+            return false;
+        }
+        Object value = attributes.get(key);
+        if (value instanceof Boolean boolValue) {
+            return boolValue;
+        }
+        if (value instanceof String stringValue) {
+            return "true".equalsIgnoreCase(stringValue.trim());
+        }
+        return false;
+    }
+
+    private BigDecimal readBigDecimal(Map<String, Object> attributes, String key) {
+        if (attributes == null) {
+            return null;
+        }
+        Object value = attributes.get(key);
+        if (value == null) {
+            return null;
+        }
+        if (value instanceof BigDecimal decimalValue) {
+            return decimalValue;
+        }
+        if (value instanceof Number numberValue) {
+            return BigDecimal.valueOf(numberValue.doubleValue());
+        }
+        if (value instanceof String stringValue) {
+            String normalized = stringValue.trim();
+            if (normalized.isEmpty()) {
+                return null;
+            }
+            try {
+                return new BigDecimal(normalized);
+            } catch (NumberFormatException exception) {
+                throw new BusinessException(
+                        key.toUpperCase(Locale.ROOT) + "_INVALID",
+                        "Invalid value for " + key + ".",
+                        HttpStatus.BAD_REQUEST
+                );
+            }
+        }
+        return null;
     }
 
     private String normalizeOption(String value, Set<String> allowed, String code, String message) {

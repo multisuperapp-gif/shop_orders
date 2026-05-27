@@ -145,4 +145,124 @@ class RestaurantProductRequestNormalizerTest {
 
         assertEquals("MRP_REQUIRED", exception.getErrorCode());
     }
+
+    @Test
+    void normalizeRejectsDealPriceEqualToSellingPriceForSingleSizeItem() {
+        BusinessException exception = assertThrows(BusinessException.class, () -> normalizer.normalize(
+                null,
+                new ShopCreateProductRequest(
+                        9L,
+                        "Cold Coffee",
+                        null,
+                        null,
+                        null,
+                        "beverage",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        new BigDecimal("120"),
+                        new BigDecimal("99"),
+                        10,
+                        2,
+                        null,
+                        null,
+                        true,
+                        false,
+                        Map.of("foodPreference", "veg"),
+                        null,
+                        null,
+                        new com.msa.shop_orders.provider.shop.dto.ShopProductPromotionRequest(
+                                true,
+                                "DEAL",
+                                java.time.LocalDateTime.now().plusDays(1),
+                                java.time.LocalDateTime.now().plusDays(2),
+                                0,
+                                new BigDecimal("99"),
+                                "ACTIVE"
+                        ),
+                        null
+                )
+        ));
+
+        assertEquals("PROMOTION_PRICE_INVALID", exception.getErrorCode());
+    }
+
+    @Test
+    void normalizeRejectsVariantDealPriceEqualToSellingPrice() {
+        BusinessException exception = assertThrows(BusinessException.class, () -> normalizer.normalize(
+                null,
+                new ShopCreateProductRequest(
+                        9L,
+                        "Orange Juice",
+                        null,
+                        null,
+                        null,
+                        "drink",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        true,
+                        false,
+                        Map.of("foodPreference", "veg"),
+                        List.of(
+                                new ShopProductVariantRequest(
+                                        null,
+                                        "small",
+                                        "250 ml",
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        new BigDecimal("60"),
+                                        new BigDecimal("50"),
+                                        20,
+                                        5,
+                                        true,
+                                        true,
+                                        0,
+                                        Map.of(
+                                                "promotionEnabled", true,
+                                                "promotionPaidAmount", new BigDecimal("50"),
+                                                "promotionStartsAt", "2026-05-28T00:00:00",
+                                                "promotionEndsAt", "2026-05-29T23:59:59"
+                                        )
+                                ),
+                                new ShopProductVariantRequest(
+                                        null,
+                                        "large",
+                                        "500 ml",
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        null,
+                                        new BigDecimal("100"),
+                                        new BigDecimal("90"),
+                                        20,
+                                        5,
+                                        false,
+                                        true,
+                                        1,
+                                        null
+                                )
+                        ),
+                        null,
+                        null,
+                        null
+                )
+        ));
+
+        assertEquals("VARIANT_PROMOTION_PRICE_INVALID", exception.getErrorCode());
+    }
 }
