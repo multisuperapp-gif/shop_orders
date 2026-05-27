@@ -1,6 +1,7 @@
 package com.msa.shop_orders.consumer.order.service;
 
 import com.msa.shop_orders.common.exception.BusinessException;
+import com.msa.shop_orders.common.shoptype.RestaurantVariantPromotionSupport;
 import com.msa.shop_orders.common.shoptype.RestaurantItemVisibilityPolicy;
 import com.msa.shop_orders.common.mongo.MongoSequenceService;
 import com.msa.shop_orders.persistence.entity.ShopLocationEntity;
@@ -114,7 +115,7 @@ public class ShopOrderWriteService {
                     variant.getReorderLevel(),
                     product.isActive() && variant.isActive()
             ));
-            BigDecimal unitPrice = defaultAmount(variant.getSellingPrice());
+            BigDecimal unitPrice = RestaurantVariantPromotionSupport.resolveEffectiveSellingPrice(product, variant);
             BigDecimal lineTotal = unitPrice.multiply(BigDecimal.valueOf(requestedQuantity));
             subtotal = subtotal.add(lineTotal);
             CreateOrderItemCommand itemCommand = commandsByVariantId.get(variantId);
@@ -396,7 +397,7 @@ public class ShopOrderWriteService {
                 continue;
             }
             VariantSelection selection = selectionsByVariantId.get(item.variantId());
-            if (selection != null && hasActivePromotion(selection.product())) {
+            if (selection != null && RestaurantVariantPromotionSupport.hasActivePromotion(selection.product(), selection.variant())) {
                 continue;
             }
             eligibleSubtotal = eligibleSubtotal.add(defaultAmount(item.lineTotal()));
@@ -445,21 +446,6 @@ public class ShopOrderWriteService {
             return subtotal.setScale(2, RoundingMode.HALF_UP);
         }
         return discountAmount.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
-    }
-
-    private boolean hasActivePromotion(ShopProductView product) {
-        if (product == null || product.getPromotion() == null) {
-            return false;
-        }
-        ShopProductView.Promotion promotion = product.getPromotion();
-        if (!"ACTIVE".equalsIgnoreCase(promotion.getStatus())) {
-            return false;
-        }
-        LocalDateTime now = LocalDateTime.now();
-        return promotion.getStartsAt() != null
-                && promotion.getEndsAt() != null
-                && !now.isBefore(promotion.getStartsAt())
-                && !now.isAfter(promotion.getEndsAt());
     }
 
     private int defaultInteger(Integer value) {

@@ -2,6 +2,7 @@ package com.msa.shop_orders.consumer.checkout.service;
 
 import com.msa.shop_orders.common.exception.BusinessException;
 import com.msa.shop_orders.common.shoptype.RestaurantItemVisibilityPolicy;
+import com.msa.shop_orders.common.shoptype.RestaurantVariantPromotionSupport;
 import com.msa.shop_orders.consumer.cart.view.ConsumerCartView;
 import com.msa.shop_orders.consumer.cart.service.ConsumerCartService;
 import com.msa.shop_orders.consumer.checkout.dto.ConsumerCheckoutPreviewData;
@@ -254,7 +255,10 @@ public class ConsumerCheckoutService {
                 continue;
             }
             ShopProductView product = productsById.get(item.getProductId());
-            if (hasActivePromotion(product)) {
+            ShopProductView.Variant variant = product == null
+                    ? null
+                    : resolveVariant(product, item.getVariantId());
+            if (RestaurantVariantPromotionSupport.hasActivePromotion(product, variant)) {
                 continue;
             }
             eligibleSubtotal = eligibleSubtotal.add(defaultAmount(item.getLineTotal()));
@@ -331,19 +335,14 @@ public class ConsumerCheckoutService {
         return discountAmount.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
     }
 
-    private boolean hasActivePromotion(ShopProductView product) {
-        if (product == null || product.getPromotion() == null) {
-            return false;
+    private ShopProductView.Variant resolveVariant(ShopProductView product, Long variantId) {
+        if (product == null || variantId == null || product.getVariants() == null) {
+            return null;
         }
-        ShopProductView.Promotion promotion = product.getPromotion();
-        if (!"ACTIVE".equalsIgnoreCase(promotion.getStatus())) {
-            return false;
-        }
-        LocalDateTime now = LocalDateTime.now();
-        return promotion.getStartsAt() != null
-                && promotion.getEndsAt() != null
-                && !now.isBefore(promotion.getStartsAt())
-                && !now.isAfter(promotion.getEndsAt());
+        return product.getVariants().stream()
+                .filter(variant -> Objects.equals(variant.getVariantId(), variantId))
+                .findFirst()
+                .orElse(null);
     }
 
     private BigDecimal defaultAmount(BigDecimal value) {

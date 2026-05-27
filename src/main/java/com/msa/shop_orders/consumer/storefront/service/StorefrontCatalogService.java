@@ -2,6 +2,7 @@ package com.msa.shop_orders.consumer.storefront.service;
 
 import com.msa.shop_orders.common.exception.BusinessException;
 import com.msa.shop_orders.common.shoptype.RestaurantItemVisibilityPolicy;
+import com.msa.shop_orders.common.shoptype.RestaurantVariantPromotionSupport;
 import com.msa.shop_orders.consumer.storefront.dto.StorefrontDtos;
 import com.msa.shop_orders.persistence.repository.StorefrontCatalogRepository;
 import com.msa.shop_orders.provider.shop.service.ShopCategoryViewService;
@@ -424,8 +425,12 @@ public class StorefrontCatalogService {
                 product.getBrandName(),
                 product.getShortDescription(),
                 product.getProductType(),
-                variant == null ? product.getMrp() : safeBigDecimal(variant.getMrp()),
-                variant == null ? product.getSellingPrice() : safeBigDecimal(variant.getSellingPrice()),
+                variant == null
+                        ? product.getMrp()
+                        : RestaurantVariantPromotionSupport.resolveDisplayOriginalPrice(product, variant),
+                variant == null
+                        ? product.getSellingPrice()
+                        : RestaurantVariantPromotionSupport.resolveEffectiveSellingPrice(product, variant),
                 safeBigDecimal(product.getAvgRating()),
                 safeLong(product.getTotalReviews()),
                 safeLong(product.getTotalOrders()),
@@ -471,8 +476,8 @@ public class StorefrontCatalogService {
                 .map(variant -> new StorefrontDtos.ProductVariantData(
                         variant.getVariantId(),
                         variant.getVariantName(),
-                        safeBigDecimal(variant.getMrp()),
-                        safeBigDecimal(variant.getSellingPrice()),
+                        RestaurantVariantPromotionSupport.resolveDisplayOriginalPrice(product, variant),
+                        RestaurantVariantPromotionSupport.resolveEffectiveSellingPrice(product, variant),
                         variant.isDefaultVariant(),
                         variant.isActive(),
                         toJson(variant.getAttributes()),

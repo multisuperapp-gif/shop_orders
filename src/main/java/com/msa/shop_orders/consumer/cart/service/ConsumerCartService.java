@@ -2,6 +2,7 @@ package com.msa.shop_orders.consumer.cart.service;
 
 import com.msa.shop_orders.common.exception.BusinessException;
 import com.msa.shop_orders.common.shoptype.RestaurantItemVisibilityPolicy;
+import com.msa.shop_orders.common.shoptype.RestaurantVariantPromotionSupport;
 import com.msa.shop_orders.consumer.cart.dto.ConsumerCartAddItemRequest;
 import com.msa.shop_orders.consumer.cart.dto.ConsumerCartData;
 import com.msa.shop_orders.consumer.cart.dto.ConsumerCartItemData;
@@ -295,7 +296,7 @@ public class ConsumerCartService {
                 shop.getShopName(),
                 variant.getVariantId(),
                 variant.getVariantName(),
-                defaultAmount(variant.getSellingPrice()),
+                RestaurantVariantPromotionSupport.resolveEffectiveSellingPrice(product, variant),
                 imageFileId
         );
     }
