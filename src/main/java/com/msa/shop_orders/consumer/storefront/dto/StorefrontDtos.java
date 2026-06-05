@@ -156,7 +156,8 @@ public final class StorefrontDtos {
             String restaurantServiceType,
             boolean servesVeg,
             boolean servesNonVeg,
-            boolean servesEgg
+            boolean servesEgg,
+            boolean hasOffer
     ) {
     }
 

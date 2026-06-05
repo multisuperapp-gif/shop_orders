@@ -20,6 +20,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -301,6 +302,7 @@ public class StorefrontCatalogService {
                 .findPrimaryDeliveryRule(shopId).orElse(null);
         OperatingState operating = resolveOperatingState(shopId, delivery);
         VegProfile veg = resolveVegProfile(shopId, shop.getRestaurantServiceType());
+        boolean hasOffer = resolveHasOffer(shopId);
 
         return new StorefrontDtos.ShopSummaryData(
                 shopId,
@@ -325,8 +327,32 @@ public class StorefrontCatalogService {
                 veg.restaurantServiceType(),
                 veg.servesVeg(),
                 veg.servesNonVeg(),
-                veg.servesEgg()
+                veg.servesEgg(),
+                hasOffer
         );
+    }
+
+    // A shop "has an offer" when it has a restaurant coupon that is active and
+    // currently within its start/end window.
+    private boolean resolveHasOffer(Long shopId) {
+        return shopShellViewRepository.findById(shopId)
+                .map(ShopShellView::getRestaurantCoupon)
+                .map(this::isCouponActive)
+                .orElse(false);
+    }
+
+    private boolean isCouponActive(ShopShellView.RestaurantCoupon coupon) {
+        if (coupon == null || !Boolean.TRUE.equals(coupon.getActive())) {
+            return false;
+        }
+        LocalDateTime now = LocalDateTime.now(SHOP_ZONE);
+        if (coupon.getStartsAt() != null && now.isBefore(coupon.getStartsAt())) {
+            return false;
+        }
+        if (coupon.getEndsAt() != null && now.isAfter(coupon.getEndsAt())) {
+            return false;
+        }
+        return true;
     }
 
     private OperatingState resolveOperatingState(Long shopId, ShopProductDeliveryRuleData delivery) {
