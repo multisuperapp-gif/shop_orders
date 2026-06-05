@@ -5,8 +5,12 @@ import com.msa.shop_orders.common.shoptype.RestaurantItemVisibilityPolicy;
 import com.msa.shop_orders.common.shoptype.RestaurantVariantPromotionSupport;
 import com.msa.shop_orders.consumer.storefront.dto.StorefrontDtos;
 import com.msa.shop_orders.persistence.repository.StorefrontCatalogRepository;
+import com.msa.shop_orders.provider.shop.dto.ShopProductDeliveryRuleData;
 import com.msa.shop_orders.provider.shop.service.ShopCategoryViewService;
+import com.msa.shop_orders.provider.shop.service.ShopDeliveryRuleViewService;
+import com.msa.shop_orders.provider.shop.service.ShopOperatingHoursViewService;
 import com.msa.shop_orders.provider.shop.service.ShopShellViewService;
+import com.msa.shop_orders.provider.shop.view.ShopOperatingHoursView;
 import com.msa.shop_orders.provider.shop.view.ShopProductView;
 import com.msa.shop_orders.provider.shop.view.ShopShellView;
 import com.msa.shop_orders.provider.shop.view.repository.ShopProductViewRepository;
@@ -14,6 +18,11 @@ import com.msa.shop_orders.provider.shop.view.repository.ShopShellViewRepository
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.math.BigDecimal;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -31,11 +40,16 @@ public class StorefrontCatalogService {
     private static final int DEFAULT_PAGE_SIZE = 20;
     private static final int MAX_PAGE_SIZE = 20;
 
+    private static final ZoneId SHOP_ZONE = ZoneId.of("Asia/Kolkata");
+    private static final DateTimeFormatter CLOSES_AT_FORMAT = DateTimeFormatter.ofPattern("HH:mm");
+
     private final StorefrontCatalogRepository storefrontCatalogRepository;
     private final ShopCategoryViewService shopCategoryViewService;
     private final ShopProductViewRepository shopProductViewRepository;
     private final ShopShellViewRepository shopShellViewRepository;
     private final ShopShellViewService shopShellViewService;
+    private final ShopDeliveryRuleViewService shopDeliveryRuleViewService;
+    private final ShopOperatingHoursViewService shopOperatingHoursViewService;
     private final ObjectMapper objectMapper;
 
     public StorefrontCatalogService(
@@ -44,6 +58,8 @@ public class StorefrontCatalogService {
             ShopProductViewRepository shopProductViewRepository,
             ShopShellViewRepository shopShellViewRepository,
             ShopShellViewService shopShellViewService,
+            ShopDeliveryRuleViewService shopDeliveryRuleViewService,
+            ShopOperatingHoursViewService shopOperatingHoursViewService,
             ObjectMapper objectMapper
     ) {
         this.storefrontCatalogRepository = storefrontCatalogRepository;
@@ -51,6 +67,8 @@ public class StorefrontCatalogService {
         this.shopProductViewRepository = shopProductViewRepository;
         this.shopShellViewRepository = shopShellViewRepository;
         this.shopShellViewService = shopShellViewService;
+        this.shopDeliveryRuleViewService = shopDeliveryRuleViewService;
+        this.shopOperatingHoursViewService = shopOperatingHoursViewService;
         this.objectMapper = objectMapper;
     }
 
@@ -204,29 +222,201 @@ public class StorefrontCatalogService {
     ) {
         int safePage = Math.max(page, 0);
         int safeSize = size <= 0 ? DEFAULT_PAGE_SIZE : Math.min(size, MAX_PAGE_SIZE);
-        int limit = safeSize + 1;
-        int offset = safePage * safeSize;
+        String normalizedSearch = normalizeSearch(search);
 
-        List<StorefrontDtos.ShopSummaryData> rows = storefrontCatalogRepository.findShops(
-                        shopTypeId,
-                        categoryId,
-                        StringUtils.hasText(search) ? "%" + search.trim() + "%" : null,
-                        userLatitude,
-                        userLongitude,
-                        limit,
-                        offset
-                ).stream()
-                .map(this::toShopSummaryData)
+        List<StorefrontDtos.ShopSummaryData> all = storefrontCatalogRepository
+                .findApprovedShopsByType(shopTypeId).stream()
+                // Shop-wise listing only shows shops that have at least one category-eligible active product.
+                .filter(shop -> categoryId == null || shopHasActiveProductInCategory(shop.getShopId(), categoryId))
+                .filter(shop -> matchesShopSearch(shop, normalizedSearch))
+                .map(this::buildShopSummary)
+                .sorted(shopSummaryComparator(userLatitude, userLongitude))
                 .toList();
-        boolean hasMore = rows.size() > safeSize;
-        List<StorefrontDtos.ShopSummaryData> items = hasMore ? rows.subList(0, safeSize) : rows;
-        return new StorefrontDtos.PageResponse<>(items, safePage, safeSize, hasMore);
+
+        int fromIndex = Math.min(safePage * safeSize, all.size());
+        int toIndex = Math.min(fromIndex + safeSize, all.size());
+        boolean hasMore = toIndex < all.size();
+        return new StorefrontDtos.PageResponse<>(all.subList(fromIndex, toIndex), safePage, safeSize, hasMore);
     }
 
     private StorefrontDtos.ShopSummaryData requireShop(Long shopTypeId, Long shopId) {
-        return storefrontCatalogRepository.findShopSummary(shopTypeId, shopId)
-                .map(this::toShopSummaryData)
+        return storefrontCatalogRepository.findApprovedShopById(shopTypeId, shopId)
+                .map(this::buildShopSummary)
                 .orElseThrow(() -> new BusinessException("SHOP_NOT_FOUND", "Shop not found", HttpStatus.NOT_FOUND));
+    }
+
+    private boolean shopHasActiveProductInCategory(Long shopId, Long categoryId) {
+        return shopProductViewRepository.findByShopIdOrderByUpdatedAtDesc(shopId).stream()
+                .anyMatch(product -> isActiveProduct(product)
+                        && Objects.equals(product.getCategoryId(), categoryId));
+    }
+
+    private boolean matchesShopSearch(
+            StorefrontCatalogRepository.ShopIdentityLocationView shop,
+            String normalizedSearch
+    ) {
+        if (normalizedSearch == null) {
+            return true;
+        }
+        return containsIgnoreCase(shop.getShopName(), normalizedSearch)
+                || containsIgnoreCase(shop.getCity(), normalizedSearch);
+    }
+
+    private Comparator<StorefrontDtos.ShopSummaryData> shopSummaryComparator(
+            Double userLatitude,
+            Double userLongitude
+    ) {
+        return Comparator
+                .comparing((StorefrontDtos.ShopSummaryData shop) -> shop.acceptsOrders() ? 0 : 1)
+                .thenComparing(shop -> shop.closingSoon() ? 1 : 0)
+                .thenComparingDouble(shop -> distanceKm(userLatitude, userLongitude, shop.latitude(), shop.longitude()))
+                .thenComparing(shop -> safeBigDecimal(shop.avgRating()), Comparator.reverseOrder())
+                .thenComparing(StorefrontDtos.ShopSummaryData::totalReviews, Comparator.reverseOrder());
+    }
+
+    private double distanceKm(Double userLat, Double userLng, BigDecimal shopLat, BigDecimal shopLng) {
+        if (userLat == null || userLng == null || shopLat == null || shopLng == null) {
+            return Double.MAX_VALUE;
+        }
+        double lat1 = Math.toRadians(userLat);
+        double lat2 = Math.toRadians(shopLat.doubleValue());
+        double deltaLat = lat2 - lat1;
+        double deltaLng = Math.toRadians(shopLng.doubleValue() - userLng);
+        double a = Math.sin(deltaLat / 2) * Math.sin(deltaLat / 2)
+                + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLng / 2) * Math.sin(deltaLng / 2);
+        return 6371 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    /**
+     * Builds a shop summary by combining SQL identity/location with MongoDB views:
+     * delivery rule, today's operating hours (open/closing/accepting), and the
+     * veg/non-veg/egg flags derived from the shop's active products.
+     */
+    private StorefrontDtos.ShopSummaryData buildShopSummary(
+            StorefrontCatalogRepository.ShopIdentityLocationView shop
+    ) {
+        Long shopId = shop.getShopId();
+        ShopProductDeliveryRuleData delivery = shopDeliveryRuleViewService
+                .findPrimaryDeliveryRule(shopId).orElse(null);
+        OperatingState operating = resolveOperatingState(shopId, delivery);
+        VegProfile veg = resolveVegProfile(shopId, shop.getRestaurantServiceType());
+
+        return new StorefrontDtos.ShopSummaryData(
+                shopId,
+                shop.getShopTypeId(),
+                shop.getShopName(),
+                shop.getShopCode(),
+                shop.getLogoObjectKey(),
+                shop.getCoverObjectKey(),
+                shop.getAvgRating(),
+                shop.getTotalReviews() == null ? 0L : shop.getTotalReviews(),
+                shop.getCity(),
+                shop.getLatitude(),
+                shop.getLongitude(),
+                delivery == null ? null : delivery.deliveryType(),
+                delivery == null ? null : delivery.radiusKm(),
+                delivery == null ? null : delivery.minOrderAmount(),
+                delivery == null ? null : delivery.deliveryFee(),
+                operating.openNow(),
+                operating.closingSoon(),
+                operating.acceptsOrders(),
+                operating.closesAt(),
+                veg.restaurantServiceType(),
+                veg.servesVeg(),
+                veg.servesNonVeg(),
+                veg.servesEgg()
+        );
+    }
+
+    private OperatingState resolveOperatingState(Long shopId, ShopProductDeliveryRuleData delivery) {
+        LocalDate today = LocalDate.now(SHOP_ZONE);
+        LocalTime now = LocalTime.now(SHOP_ZONE);
+        // MongoDB stores weekday as MySQL WEEKDAY(): Monday=0 .. Sunday=6.
+        int weekday = today.getDayOfWeek().getValue() - 1;
+        ShopOperatingHoursView hours = shopOperatingHoursViewService
+                .findByShopIdAndWeekday(shopId, weekday).orElse(null);
+        if (hours == null || hours.isClosed()) {
+            return new OperatingState(false, false, false, null);
+        }
+        LocalTime open = parseTime(hours.getOpenTime());
+        LocalTime close = parseTime(hours.getCloseTime());
+        if (open == null || close == null) {
+            return new OperatingState(false, false, false, null);
+        }
+        boolean openNow = !now.isBefore(open) && !now.isAfter(close);
+        String closesAt = close.format(CLOSES_AT_FORMAT);
+        if (!openNow) {
+            return new OperatingState(false, false, false, closesAt);
+        }
+        int closingSoonMinutes = delivery == null || delivery.closingSoonMinutes() == null
+                ? 60 : delivery.closingSoonMinutes();
+        int cutoffMinutes = delivery == null || delivery.orderCutoffMinutesBeforeClose() == null
+                ? 30 : delivery.orderCutoffMinutesBeforeClose();
+        boolean closingSoon = !now.isBefore(close.minusMinutes(closingSoonMinutes));
+        boolean acceptsOrders = !now.isAfter(close.minusMinutes(cutoffMinutes));
+        return new OperatingState(true, closingSoon, acceptsOrders, closesAt);
+    }
+
+    private VegProfile resolveVegProfile(Long shopId, String configuredServiceType) {
+        boolean servesVeg = false;
+        boolean servesNonVeg = false;
+        boolean servesEgg = false;
+        for (ShopProductView product : shopProductViewRepository.findByShopIdOrderByUpdatedAtDesc(shopId)) {
+            if (!isActiveProduct(product)) {
+                continue;
+            }
+            String pref = attributeValue(product.getAttributes(), "foodPreference");
+            if (pref == null) {
+                continue;
+            }
+            switch (pref.trim().toUpperCase()) {
+                case "VEG" -> servesVeg = true;
+                case "NON_VEG" -> servesNonVeg = true;
+                case "EGG" -> servesEgg = true;
+                default -> { }
+            }
+        }
+        String configured = configuredServiceType == null ? "" : configuredServiceType.trim();
+        String resolvedType;
+        if (!configured.isEmpty()) {
+            resolvedType = configured;
+        } else if (servesVeg && !servesNonVeg && !servesEgg) {
+            resolvedType = "PURE_VEG";
+        } else if (servesVeg) {
+            resolvedType = "VEG_NON_VEG";
+        } else if (servesNonVeg || servesEgg) {
+            resolvedType = "PURE_NON_VEG";
+        } else {
+            resolvedType = "NOT_SET";
+        }
+        // Honor an explicit shop-level service type for the veg/non-veg badges.
+        String upperConfigured = configured.toUpperCase();
+        if (upperConfigured.equals("PURE_VEG")) {
+            servesVeg = true;
+            servesNonVeg = false;
+            servesEgg = false;
+        } else if (upperConfigured.equals("PURE_NON_VEG")) {
+            servesVeg = false;
+        }
+        return new VegProfile(resolvedType, servesVeg, servesNonVeg, servesEgg);
+    }
+
+    private LocalTime parseTime(String raw) {
+        if (!StringUtils.hasText(raw)) {
+            return null;
+        }
+        String value = raw.trim();
+        try {
+            return LocalTime.parse(value.length() > 5 ? value.substring(0, 5) : value);
+        } catch (Exception ex) {
+            return null;
+        }
+    }
+
+    private record OperatingState(boolean openNow, boolean closingSoon, boolean acceptsOrders, String closesAt) {
+    }
+
+    private record VegProfile(String restaurantServiceType, boolean servesVeg, boolean servesNonVeg, boolean servesEgg) {
     }
 
     private List<StorefrontDtos.ShopCategoryData> findShopCategories(Long shopId, Long shopTypeId) {
@@ -260,21 +450,6 @@ public class StorefrontCatalogService {
                 row.getComingSoonMessage(),
                 row.getIconObjectKey(),
                 row.getBannerObjectKey(),
-                row.getSortOrder() == null ? 0 : row.getSortOrder()
-        );
-    }
-
-    private StorefrontDtos.ShopCategoryData toShopCategoryData(StorefrontCatalogRepository.ShopCategoryView row) {
-        return new StorefrontDtos.ShopCategoryData(
-                row.getId(),
-                row.getParentCategoryId(),
-                row.getShopTypeId(),
-                row.getName(),
-                row.getNormalizedName(),
-                row.getThemeColor(),
-                isTrueFlag(row.getComingSoon()),
-                row.getComingSoonMessage(),
-                row.getImageObjectKey(),
                 row.getSortOrder() == null ? 0 : row.getSortOrder()
         );
     }
@@ -575,34 +750,6 @@ public class StorefrontCatalogService {
 
     private String defaultString(String value, String fallback) {
         return StringUtils.hasText(value) ? value : fallback;
-    }
-
-    private StorefrontDtos.ShopSummaryData toShopSummaryData(StorefrontCatalogRepository.ShopSummaryView row) {
-        return new StorefrontDtos.ShopSummaryData(
-                row.getShopId(),
-                row.getShopTypeId(),
-                row.getShopName(),
-                row.getShopCode(),
-                row.getLogoObjectKey(),
-                row.getCoverObjectKey(),
-                row.getAvgRating(),
-                row.getTotalReviews() == null ? 0L : row.getTotalReviews(),
-                row.getCity(),
-                row.getLatitude(),
-                row.getLongitude(),
-                row.getDeliveryType(),
-                row.getRadiusKm(),
-                row.getMinOrderAmount(),
-                row.getDeliveryFee(),
-                Boolean.TRUE.equals(row.getOpenNow()),
-                Boolean.TRUE.equals(row.getClosingSoon()),
-                Boolean.TRUE.equals(row.getAcceptsOrders()),
-                row.getClosesAt(),
-                row.getRestaurantServiceType(),
-                Boolean.TRUE.equals(row.getServesVeg()),
-                Boolean.TRUE.equals(row.getServesNonVeg()),
-                Boolean.TRUE.equals(row.getServesEgg())
-        );
     }
 
     private static Long selectVariantId(List<StorefrontDtos.ProductVariantData> variants, Long requestedVariantId) {
