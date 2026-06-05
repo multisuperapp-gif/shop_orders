@@ -26,17 +26,20 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
     private final ShopTypeViewService shopTypeViewService;
     private final ShopCategoryViewService shopCategoryViewService;
     private final MongoSequenceService mongoSequenceService;
+    private final ShopShellViewService shopShellViewService;
 
     public ShopCategoryServiceImpl(
             ShopContextService shopContextService,
             ShopTypeViewService shopTypeViewService,
             ShopCategoryViewService shopCategoryViewService,
-            MongoSequenceService mongoSequenceService
+            MongoSequenceService mongoSequenceService,
+            ShopShellViewService shopShellViewService
     ) {
         this.shopContextService = shopContextService;
         this.shopTypeViewService = shopTypeViewService;
         this.shopCategoryViewService = shopCategoryViewService;
         this.mongoSequenceService = mongoSequenceService;
+        this.shopShellViewService = shopShellViewService;
     }
 
     @Override
@@ -80,6 +83,7 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
         shopCategoryViewService.upsertTypeCategory(shopTypeId, categoryId, displayName, normalizedName, true);
         int nextSortOrder = nextShopCategorySortOrder(shopEntity.getShopId(), shopTypeId);
         shopCategoryViewService.upsertShopCategory(shopEntity.getShopId(), shopTypeId, categoryId, displayName, normalizedName, true, nextSortOrder);
+        shopShellViewService.checkAndUpdateBusinessSetupComplete(shopEntity.getShopId());
         return new ShopCategoryData(categoryId, displayName, true, nextSortOrder);
     }
 
@@ -106,6 +110,7 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
                 true,
                 nextSortOrder
         );
+        shopShellViewService.checkAndUpdateBusinessSetupComplete(shopEntity.getShopId());
         return new ShopCategoryData(
                 allowedCategory.getCategoryId(),
                 allowedCategory.getName(),
@@ -131,6 +136,7 @@ public class ShopCategoryServiceImpl implements ShopCategoryService {
                 nextEnabled,
                 category.getSortOrder()
         );
+        shopShellViewService.checkAndUpdateBusinessSetupComplete(shopEntity.getShopId());
         return new ShopCategoryData(category.getCategoryId(), category.getName(), nextEnabled, category.getSortOrder());
     }
 

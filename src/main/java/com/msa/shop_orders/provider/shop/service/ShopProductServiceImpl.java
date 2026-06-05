@@ -16,15 +16,18 @@ public class ShopProductServiceImpl implements ShopProductService {
     private final ShopContextService shopContextService;
     private final ShopTypeFamilyResolver shopTypeFamilyResolver;
     private final ProviderShopProductTypeRegistry providerShopProductTypeRegistry;
+    private final ShopShellViewService shopShellViewService;
 
     public ShopProductServiceImpl(
             ShopContextService shopContextService,
             ShopTypeFamilyResolver shopTypeFamilyResolver,
-            ProviderShopProductTypeRegistry providerShopProductTypeRegistry
+            ProviderShopProductTypeRegistry providerShopProductTypeRegistry,
+            ShopShellViewService shopShellViewService
     ) {
         this.shopContextService = shopContextService;
         this.shopTypeFamilyResolver = shopTypeFamilyResolver;
         this.providerShopProductTypeRegistry = providerShopProductTypeRegistry;
+        this.shopShellViewService = shopShellViewService;
     }
 
     @Override
@@ -38,8 +41,10 @@ public class ShopProductServiceImpl implements ShopProductService {
     @Transactional
     public ShopProductData createProduct(ShopCreateProductRequest request) {
         ShopShellView shop = shopContextService.currentApprovedShop();
-        return providerShopProductTypeRegistry.resolve(shopTypeFamilyResolver.resolveFamily(shop))
+        ShopProductData result = providerShopProductTypeRegistry.resolve(shopTypeFamilyResolver.resolveFamily(shop))
                 .createProduct(shop, request);
+        shopShellViewService.checkAndUpdateBusinessSetupComplete(shop.getShopId());
+        return result;
     }
 
     @Override
@@ -54,15 +59,19 @@ public class ShopProductServiceImpl implements ShopProductService {
     @Transactional
     public ShopProductData duplicateProduct(Long productId) {
         ShopShellView shop = shopContextService.currentApprovedShop();
-        return providerShopProductTypeRegistry.resolve(shopTypeFamilyResolver.resolveFamily(shop))
+        ShopProductData result = providerShopProductTypeRegistry.resolve(shopTypeFamilyResolver.resolveFamily(shop))
                 .duplicateProduct(shop, productId);
+        shopShellViewService.checkAndUpdateBusinessSetupComplete(shop.getShopId());
+        return result;
     }
 
     @Override
     @Transactional
     public ShopProductData updateProductStatus(Long productId, ShopProductStatusUpdateRequest request) {
         ShopShellView shop = shopContextService.currentApprovedShop();
-        return providerShopProductTypeRegistry.resolve(shopTypeFamilyResolver.resolveFamily(shop))
+        ShopProductData result = providerShopProductTypeRegistry.resolve(shopTypeFamilyResolver.resolveFamily(shop))
                 .updateProductStatus(shop, productId, request);
+        shopShellViewService.checkAndUpdateBusinessSetupComplete(shop.getShopId());
+        return result;
     }
 }

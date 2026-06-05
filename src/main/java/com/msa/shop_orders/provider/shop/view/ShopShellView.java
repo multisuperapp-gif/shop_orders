@@ -19,6 +19,7 @@ public class ShopShellView {
     private String restaurantServiceType;
     private String approvalStatus;
     private String operationalStatus;
+    private Boolean businessSetupComplete;
     private BigDecimal avgRating;
     private Integer totalReviews;
     private RestaurantCoupon restaurantCoupon;
@@ -109,6 +110,18 @@ public class ShopShellView {
 
     public void setOperationalStatus(String operationalStatus) {
         this.operationalStatus = operationalStatus;
+    }
+
+    public Boolean getBusinessSetupComplete() {
+        return businessSetupComplete;
+    }
+
+    public void setBusinessSetupComplete(Boolean businessSetupComplete) {
+        this.businessSetupComplete = businessSetupComplete;
+    }
+
+    public boolean isBusinessSetupComplete() {
+        return Boolean.TRUE.equals(businessSetupComplete);
     }
 
     public BigDecimal getAvgRating() {

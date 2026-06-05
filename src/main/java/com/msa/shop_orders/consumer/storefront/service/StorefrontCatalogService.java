@@ -345,6 +345,8 @@ public class StorefrontCatalogService {
             if (shell == null || shell.getShopId() == null) {
                 continue;
             }
+            // toShellViewAndSync re-reads from SQL and saves back to MongoDB, so any
+            // shop approved in auth-service but not yet reflected in MongoDB self-heals here.
             ShopShellView latestShell = shopShellViewService.findByShopId(shell.getShopId()).orElse(shell);
             if (!isVisibleShop(latestShell)) {
                 continue;
