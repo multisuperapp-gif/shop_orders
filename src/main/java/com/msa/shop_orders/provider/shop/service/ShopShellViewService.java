@@ -36,7 +36,14 @@ public class ShopShellViewService {
         return shopRepository
                 .findFirstByOwnerUserIdAndApprovalStatusIgnoreCaseOrderByIdDesc(ownerUserId, "APPROVED")
                 .or(() -> shopRepository.findFirstByOwnerUserIdOrderByIdDesc(ownerUserId))
-                .map(this::toShellViewAndSync);
+                .map(shop -> {
+                    ShopShellView shell = toShellViewAndSync(shop);
+                    // Heal existing shops: if categories + products are already present
+                    // but businessSetupComplete was never set (e.g. added before this
+                    // feature was deployed), mark it on the shop owner's next login.
+                    checkAndUpdateBusinessSetupComplete(shell.getShopId());
+                    return shell;
+                });
     }
 
     public Optional<ShopShellView> findByShopId(Long shopId) {
