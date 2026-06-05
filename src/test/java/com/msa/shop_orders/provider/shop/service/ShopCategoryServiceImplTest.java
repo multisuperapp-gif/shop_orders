@@ -29,6 +29,8 @@ class ShopCategoryServiceImplTest {
     private ShopCategoryViewService shopCategoryViewService;
     @Mock
     private MongoSequenceService mongoSequenceService;
+    @Mock
+    private ShopShellViewService shopShellViewService;
 
     private ShopCategoryServiceImpl service;
 
@@ -38,7 +40,8 @@ class ShopCategoryServiceImplTest {
                 shopContextService,
                 shopTypeViewService,
                 shopCategoryViewService,
-                mongoSequenceService
+                mongoSequenceService,
+                shopShellViewService
         );
     }
 

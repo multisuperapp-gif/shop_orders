@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.msa.shop_orders.consumer.storefront.dto.StorefrontDtos;
 import com.msa.shop_orders.persistence.repository.StorefrontCatalogRepository;
 import com.msa.shop_orders.provider.shop.service.ShopCategoryViewService;
+import com.msa.shop_orders.provider.shop.service.ShopDeliveryRuleViewService;
+import com.msa.shop_orders.provider.shop.service.ShopOperatingHoursViewService;
 import com.msa.shop_orders.provider.shop.service.ShopShellViewService;
 import com.msa.shop_orders.provider.shop.view.ShopProductView;
 import com.msa.shop_orders.provider.shop.view.ShopShellView;
@@ -37,6 +39,10 @@ class StorefrontCatalogServiceTest {
     @Mock
     private ShopShellViewService shopShellViewService;
     @Mock
+    private ShopDeliveryRuleViewService shopDeliveryRuleViewService;
+    @Mock
+    private ShopOperatingHoursViewService shopOperatingHoursViewService;
+    @Mock
     private ObjectMapper objectMapper;
 
     private StorefrontCatalogService service;
@@ -49,6 +55,8 @@ class StorefrontCatalogServiceTest {
                 shopProductViewRepository,
                 shopShellViewRepository,
                 shopShellViewService,
+                shopDeliveryRuleViewService,
+                shopOperatingHoursViewService,
                 objectMapper
         );
     }
