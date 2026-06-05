@@ -156,7 +156,7 @@ public class StorefrontCatalogService {
                 shopType,
                 findCategories(shopType.id(), null),
                 findProducts(shopType.id(), null, null, latitude, longitude, page, size),
-                shops(normalizedShopType, null, latitude, longitude, page, size)
+                shops(normalizedShopType, null, null, latitude, longitude, page, size)
         );
     }
 
@@ -178,6 +178,7 @@ public class StorefrontCatalogService {
 
     public StorefrontDtos.PageResponse<StorefrontDtos.ShopSummaryData> shops(
             String normalizedShopType,
+            Long categoryId,
             String search,
             Double latitude,
             Double longitude,
@@ -185,7 +186,7 @@ public class StorefrontCatalogService {
             int size
     ) {
         StorefrontDtos.ShopTypeData shopType = requireShopType(normalizedShopType);
-        return findShops(shopType.id(), null, search, latitude, longitude, page, size);
+        return findShops(shopType.id(), categoryId, search, latitude, longitude, page, size);
     }
 
     public StorefrontDtos.ShopProfileData shopProfile(

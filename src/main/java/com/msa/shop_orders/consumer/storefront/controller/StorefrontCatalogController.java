@@ -104,6 +104,7 @@ public class StorefrontCatalogController {
     @GetMapping("/shop/types/{normalizedShopType}/shops")
     public ApiResponse<StorefrontDtos.PageResponse<StorefrontDtos.ShopSummaryData>> typeShops(
             @PathVariable String normalizedShopType,
+            @RequestParam(required = false) Long categoryId,
             @RequestParam(required = false) String search,
             @RequestParam(required = false) Double latitude,
             @RequestParam(required = false) Double longitude,
@@ -112,6 +113,7 @@ public class StorefrontCatalogController {
     ) {
         return ApiResponse.success(null, storefrontCatalogService.shops(
                 normalizedShopType,
+                categoryId,
                 search,
                 latitude,
                 longitude,
