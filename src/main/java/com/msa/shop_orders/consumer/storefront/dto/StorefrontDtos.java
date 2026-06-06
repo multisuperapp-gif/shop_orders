@@ -123,7 +123,8 @@ public final class StorefrontDtos {
             String imageObjectKey,
             String attributesJson,
             String foodPreference,
-            boolean featured
+            boolean featured,
+            boolean shopAcceptsOrders
     ) {
     }
 

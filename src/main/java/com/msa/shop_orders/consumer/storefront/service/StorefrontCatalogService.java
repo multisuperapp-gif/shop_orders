@@ -618,6 +618,12 @@ public class StorefrontCatalogService {
 
     private StorefrontDtos.ShopProductCardData toShopProductCardData(ShopProductView product, ShopShellView shop) {
         ShopProductView.Variant variant = resolvePrimaryVariant(product);
+        boolean shopAcceptsOrders = false;
+        if (shop != null && shop.getShopId() != null) {
+            ShopProductDeliveryRuleData shopDelivery = shopDeliveryRuleViewService
+                    .findPrimaryDeliveryRule(shop.getShopId()).orElse(null);
+            shopAcceptsOrders = resolveOperatingState(shop.getShopId(), shopDelivery).acceptsOrders();
+        }
         return new StorefrontDtos.ShopProductCardData(
                 product.getProductId(),
                 variant == null ? null : variant.getVariantId(),
@@ -645,7 +651,8 @@ public class StorefrontCatalogService {
                 null,
                 toJson(product.getAttributes()),
                 attributeValue(product.getAttributes(), "foodPreference"),
-                product.isFeatured()
+                product.isFeatured(),
+                shopAcceptsOrders
         );
     }
 
