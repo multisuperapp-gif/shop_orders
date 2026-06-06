@@ -643,7 +643,8 @@ public class StorefrontCatalogService {
                 promotionScore(product),
                 null,
                 toJson(product.getAttributes()),
-                attributeValue(product.getAttributes(), "foodPreference")
+                attributeValue(product.getAttributes(), "foodPreference"),
+                product.isFeatured()
         );
     }
 

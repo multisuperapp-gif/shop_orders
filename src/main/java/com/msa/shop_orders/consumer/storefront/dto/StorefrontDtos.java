@@ -122,7 +122,8 @@ public final class StorefrontDtos {
             int promotionScore,
             String imageObjectKey,
             String attributesJson,
-            String foodPreference
+            String foodPreference,
+            boolean featured
     ) {
     }
 
