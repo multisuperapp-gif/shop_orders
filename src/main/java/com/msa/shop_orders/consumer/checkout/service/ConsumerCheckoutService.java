@@ -207,7 +207,11 @@ public class ConsumerCheckoutService {
         if (primaryLocation == null) {
             throw new BusinessException("SHOP_NOT_FOUND", "Shop not found.", HttpStatus.NOT_FOUND);
         }
-        int weekday = java.time.LocalDate.now().getDayOfWeek().getValue() - 1;
+        // Operating hours use ISO weekday: Monday=1 .. Sunday=7 (matches
+        // ShopOperatingHoursServiceImpl.saveCurrent). Use the shop timezone.
+        int weekday = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Kolkata"))
+                .getDayOfWeek()
+                .getValue();
         var hours = shopOperatingHoursViewService.findByShopIdAndWeekday(shopId, weekday).orElse(null);
         return new OperatingHoursRow(
                 null,

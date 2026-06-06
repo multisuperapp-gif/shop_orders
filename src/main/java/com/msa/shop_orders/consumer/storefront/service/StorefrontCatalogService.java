@@ -358,8 +358,9 @@ public class StorefrontCatalogService {
     private OperatingState resolveOperatingState(Long shopId, ShopProductDeliveryRuleData delivery) {
         LocalDate today = LocalDate.now(SHOP_ZONE);
         LocalTime now = LocalTime.now(SHOP_ZONE);
-        // MongoDB stores weekday as MySQL WEEKDAY(): Monday=0 .. Sunday=6.
-        int weekday = today.getDayOfWeek().getValue() - 1;
+        // Operating hours are stored with ISO weekday: Monday=1 .. Sunday=7
+        // (see ShopOperatingHoursServiceImpl.saveCurrent).
+        int weekday = today.getDayOfWeek().getValue();
         ShopOperatingHoursView hours = shopOperatingHoursViewService
                 .findByShopIdAndWeekday(shopId, weekday).orElse(null);
         if (hours == null || hours.isClosed()) {
