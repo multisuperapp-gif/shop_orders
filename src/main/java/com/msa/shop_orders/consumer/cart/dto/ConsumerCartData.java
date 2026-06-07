@@ -11,6 +11,12 @@ public record ConsumerCartData(
         String cartContext,
         int itemCount,
         BigDecimal subtotal,
-        List<ConsumerCartItemData> items
+        List<ConsumerCartItemData> items,
+        // Auto-applicable shop coupon (null when none is currently available).
+        String couponCode,
+        String couponTitle,
+        BigDecimal couponMinOrderAmount,
+        // Discount for the current subtotal (0 when the coupon isn't eligible yet).
+        BigDecimal couponDiscountAmount
 ) {
 }

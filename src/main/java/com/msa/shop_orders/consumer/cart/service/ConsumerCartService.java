@@ -222,7 +222,7 @@ public class ConsumerCartService {
 
     private ConsumerCartData toCartData(Long userId, ConsumerCartView cart) {
         if (cart == null || cart.getItems() == null || cart.getItems().isEmpty()) {
-            return new ConsumerCartData(userId, null, null, DEFAULT_CURRENCY, null, 0, BigDecimal.ZERO, List.of());
+            return new ConsumerCartData(userId, null, null, DEFAULT_CURRENCY, null, 0, BigDecimal.ZERO, List.of(), null, null, null, BigDecimal.ZERO);
         }
         Map<Long, String> imageKeysByFileId = fileRepository.findAllById(cart.getItems().stream()
                         .map(ConsumerCartView.Item::getImageFileId)
@@ -251,6 +251,15 @@ public class ConsumerCartService {
                 .map(ConsumerCartItemData::lineTotal)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         int itemCount = items.stream().mapToInt(ConsumerCartItemData::quantity).sum();
+        ShopShellView.RestaurantCoupon coupon = resolveActiveCartCoupon(cart.getShopId());
+        String couponCode = coupon == null ? null : coupon.getCouponCode();
+        String couponTitle = coupon == null ? null : coupon.getCouponTitle();
+        BigDecimal couponMinOrderAmount = coupon == null
+                ? null
+                : defaultAmount(coupon.getMinOrderAmount());
+        BigDecimal couponDiscountAmount = coupon == null
+                ? BigDecimal.ZERO
+                : computeCouponDiscount(coupon, subtotal);
         return new ConsumerCartData(
                 userId,
                 cart.getShopId(),
@@ -259,8 +268,65 @@ public class ConsumerCartService {
                 cart.getCartContext(),
                 itemCount,
                 subtotal,
-                items
+                items,
+                couponCode,
+                couponTitle,
+                couponMinOrderAmount,
+                couponDiscountAmount
         );
+    }
+
+    // Returns the shop's coupon if it is active and within its validity window
+    // (regardless of whether the current subtotal meets the minimum), else null.
+    private ShopShellView.RestaurantCoupon resolveActiveCartCoupon(Long shopId) {
+        if (shopId == null) {
+            return null;
+        }
+        ShopShellView shop = shopShellViewService.findByShopId(shopId)
+                .or(() -> shopShellViewRepository.findById(shopId))
+                .orElse(null);
+        if (shop == null || shop.getRestaurantCoupon() == null) {
+            return null;
+        }
+        ShopShellView.RestaurantCoupon coupon = shop.getRestaurantCoupon();
+        if (!Boolean.TRUE.equals(coupon.getActive())) {
+            return null;
+        }
+        LocalDateTime now = LocalDateTime.now();
+        if (coupon.getStartsAt() == null || coupon.getEndsAt() == null
+                || now.isBefore(coupon.getStartsAt()) || now.isAfter(coupon.getEndsAt())) {
+            return null;
+        }
+        if (defaultAmount(coupon.getDiscountValue()).compareTo(BigDecimal.ZERO) <= 0) {
+            return null;
+        }
+        return coupon;
+    }
+
+    private BigDecimal computeCouponDiscount(ShopShellView.RestaurantCoupon coupon, BigDecimal subtotal) {
+        if (coupon == null || subtotal == null) {
+            return BigDecimal.ZERO;
+        }
+        if (subtotal.compareTo(defaultAmount(coupon.getMinOrderAmount())) < 0) {
+            return BigDecimal.ZERO;
+        }
+        BigDecimal discountValue = defaultAmount(coupon.getDiscountValue());
+        BigDecimal discountAmount;
+        if ("FLAT".equalsIgnoreCase(coupon.getDiscountType())) {
+            discountAmount = discountValue;
+        } else {
+            discountAmount = subtotal.multiply(discountValue)
+                    .divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+        }
+        BigDecimal maxDiscountAmount = coupon.getMaxDiscountAmount();
+        if (maxDiscountAmount != null && maxDiscountAmount.compareTo(BigDecimal.ZERO) > 0
+                && discountAmount.compareTo(maxDiscountAmount) > 0) {
+            discountAmount = maxDiscountAmount;
+        }
+        if (discountAmount.compareTo(subtotal) > 0) {
+            return subtotal.setScale(2, RoundingMode.HALF_UP);
+        }
+        return discountAmount.max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
     }
 
     private ResolvedProduct resolveProduct(Long productId, Long requestedVariantId) {
