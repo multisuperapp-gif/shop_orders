@@ -31,6 +31,8 @@ public class ShopOrderView {
 
     private String orderCode;
     private String shopName;
+    private String customerName;
+    private String customerPhone;
     private String paymentStatus;
     private String paymentCode;
     private String fulfillmentType;

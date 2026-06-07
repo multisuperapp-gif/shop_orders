@@ -3,6 +3,7 @@ package com.msa.shop_orders.provider.shop.type.order.shared;
 import com.msa.shop_orders.common.exception.BusinessException;
 import com.msa.shop_orders.common.shoptype.ShopTypeFamily;
 import com.msa.shop_orders.integration.bookingpayment.ShopOrdersBookingPaymentOrderClient;
+import com.msa.shop_orders.integration.bookingpayment.dto.ShopOrdersBookingPaymentOrderDtos.NotifyShopOrderEventRequest;
 import com.msa.shop_orders.integration.bookingpayment.dto.ShopOrdersBookingPaymentOrderDtos.UpdateShopOrderStatusRequest;
 import com.msa.shop_orders.provider.shop.dto.ShopOrderData;
 import com.msa.shop_orders.provider.shop.dto.ShopOrderStatusUpdateRequest;
@@ -52,7 +53,8 @@ public class SharedProviderShopOrderTypeHandler implements ProviderShopOrderType
     public ShopOrderData updateOrderStatus(ShopShellView shop, Long orderId, ShopOrderStatusUpdateRequest request) {
         String newStatus = normalizeOrderStatus(request.newStatus());
         Long changedByUserId = shop.getOwnerUserId();
-        String oldStatus = normalizeOrderStatus(requireShopOrder(shop, orderId).getOrderStatus());
+        ShopOrderView existing = requireShopOrder(shop, orderId);
+        String oldStatus = normalizeOrderStatus(existing.getOrderStatus());
 
         if (newStatus.equalsIgnoreCase(oldStatus)) {
             return shopRuntimeViewService.loadOrder(shop, orderId);
@@ -65,6 +67,10 @@ public class SharedProviderShopOrderTypeHandler implements ProviderShopOrderType
                     blankToNull(request.reason()),
                     null
             ));
+            // Rejecting a still-pending request → tell the customer it was declined.
+            if ("PENDING_ACCEPTANCE".equals(oldStatus)) {
+                notifyOrderEvent("ORDER_REJECTED", existing, blankToNull(request.reason()));
+            }
             return shopRuntimeViewService.loadOrder(shop, orderId);
         }
         validateLocalTransition(oldStatus, newStatus);
@@ -78,7 +84,45 @@ public class SharedProviderShopOrderTypeHandler implements ProviderShopOrderType
                         null
                 )
         );
+        ShopOrderView notifyTarget = orderView != null ? orderView : existing;
+        if ("ACCEPTED".equals(newStatus) && "PENDING_ACCEPTANCE".equals(oldStatus)) {
+            // Accept-first: opens the customer's 5-minute payment window.
+            notifyOrderEvent("ORDER_ACCEPTED", notifyTarget, null);
+        } else {
+            // Every other forward status change (preparing/dispatched/out for
+            // delivery/delivered) notifies the customer with a sound.
+            notifyOrderEvent(
+                    "ORDER_STATUS",
+                    notifyTarget,
+                    "Your order is now " + humanizeOrderStatus(newStatus) + "."
+            );
+        }
         return orderView == null ? shopRuntimeViewService.loadOrder(shop, orderId) : shopRuntimeViewService.toShopOrderData(orderView);
+    }
+
+    private String humanizeOrderStatus(String status) {
+        return switch (status == null ? "" : status.trim().toUpperCase(Locale.ROOT)) {
+            case "PREPARING" -> "being prepared";
+            case "DISPATCHED" -> "dispatched";
+            case "OUT_FOR_DELIVERY" -> "out for delivery";
+            case "DELIVERED" -> "delivered";
+            default -> status == null ? "updated" : status.toLowerCase(Locale.ROOT);
+        };
+    }
+
+    private void notifyOrderEvent(String event, ShopOrderView order, String message) {
+        try {
+            bookingPaymentOrderClient.notifyOrderEvent(new NotifyShopOrderEventRequest(
+                    event,
+                    order.getShopId(),
+                    order.getUserId(),
+                    order.getOrderId(),
+                    order.getOrderCode(),
+                    message
+            ));
+        } catch (Exception ignored) {
+            // Best-effort push — never fail the status change on a notification error.
+        }
     }
 
     private ShopOrderView requireShopOrder(ShopShellView shop, Long orderId) {
@@ -90,14 +134,18 @@ public class SharedProviderShopOrderTypeHandler implements ProviderShopOrderType
     private void validateLocalTransition(String currentStatus, String newStatus) {
         String current = normalizeOrderStatus(currentStatus);
         switch (current) {
-            case "PAYMENT_COMPLETED" -> {
+            // Accept-first: the shop accepts a pending request, which opens the
+            // user's 5-minute payment window. (Reject is the CANCELLED branch.)
+            case "PENDING_ACCEPTANCE" -> {
                 if (!"ACCEPTED".equals(newStatus)) {
-                    throw new BusinessException("INVALID_ORDER_STATUS_TRANSITION", "Only ACCEPTED is allowed after payment completion.", HttpStatus.BAD_REQUEST);
+                    throw new BusinessException("INVALID_ORDER_STATUS_TRANSITION", "Only ACCEPTED is allowed for a pending order request.", HttpStatus.BAD_REQUEST);
                 }
             }
-            case "ACCEPTED" -> {
+            // After ACCEPTED the user pays; once payment completes the shop starts
+            // preparing. The shop cannot advance an ACCEPTED-but-unpaid order.
+            case "PAYMENT_COMPLETED" -> {
                 if (!"PREPARING".equals(newStatus)) {
-                    throw new BusinessException("INVALID_ORDER_STATUS_TRANSITION", "Only PREPARING is allowed after ACCEPTED.", HttpStatus.BAD_REQUEST);
+                    throw new BusinessException("INVALID_ORDER_STATUS_TRANSITION", "Only PREPARING is allowed after payment completion.", HttpStatus.BAD_REQUEST);
                 }
             }
             case "PREPARING" -> {

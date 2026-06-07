@@ -19,4 +19,14 @@ public final class ShopOrdersBookingPaymentOrderDtos {
             String refundPolicyApplied
     ) {
     }
+
+    public record NotifyShopOrderEventRequest(
+            String event,
+            Long shopId,
+            Long userId,
+            Long orderId,
+            String orderCode,
+            String message
+    ) {
+    }
 }

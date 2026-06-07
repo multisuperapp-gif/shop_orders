@@ -322,12 +322,17 @@ public class ShopRuntimeViewService {
                 document.getOrderId(),
                 document.getOrderCode(),
                 document.getOrderStatus(),
+                document.getPaymentStatus(),
+                document.getCustomerName(),
+                document.getCustomerPhone(),
                 document.getCreatedAt(),
                 defaultInteger(document.getItemCount()),
                 defaultAmount(document.getItemsTotal()),
                 defaultAmount(document.getDeliveryCharges()),
                 defaultAmount(document.getPlatformFee()),
                 defaultAmount(document.getTotalOrderValue()),
+                document.getAddressLabel(),
+                document.getAddressLine(),
                 Optional.ofNullable(document.getItems()).orElse(List.of()).stream()
                         .map(item -> new ShopOrderItemData(
                                 item.getItemName(),

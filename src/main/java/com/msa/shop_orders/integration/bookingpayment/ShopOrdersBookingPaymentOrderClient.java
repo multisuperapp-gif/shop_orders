@@ -2,6 +2,7 @@ package com.msa.shop_orders.integration.bookingpayment;
 
 import com.msa.shop_orders.integration.bookingpayment.dto.ShopOrdersBookingPaymentApiResponse;
 import com.msa.shop_orders.integration.bookingpayment.dto.ShopOrdersBookingPaymentOrderDtos.CancelShopOrderRequest;
+import com.msa.shop_orders.integration.bookingpayment.dto.ShopOrdersBookingPaymentOrderDtos.NotifyShopOrderEventRequest;
 import com.msa.shop_orders.integration.bookingpayment.dto.ShopOrdersBookingPaymentOrderDtos.UpdateShopOrderStatusRequest;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -19,5 +20,10 @@ public interface ShopOrdersBookingPaymentOrderClient {
     @PostMapping("/shop-orders/status")
     ShopOrdersBookingPaymentApiResponse<Object> updateStatus(
             @RequestBody UpdateShopOrderStatusRequest request
+    );
+
+    @PostMapping("/shop-orders/notify")
+    ShopOrdersBookingPaymentApiResponse<Void> notifyOrderEvent(
+            @RequestBody NotifyShopOrderEventRequest request
     );
 }

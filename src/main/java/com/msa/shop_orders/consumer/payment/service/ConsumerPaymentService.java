@@ -53,6 +53,9 @@ public class ConsumerPaymentService {
     ) {
         Long userId = currentUserService.currentUser().userId();
         requireShopOrderPaymentOwnership(userId, paymentCode);
+        // Accept-first: payment can only be made once the shop has accepted the
+        // order (status ACCEPTED). Mirrors the booking accepted-then-pay flow.
+        requireOrderAcceptedForPayment(paymentCode);
         ShopOrdersBookingPaymentDtos.PaymentInitiateResponse data = requireData(call(
                 () -> shopOrdersBookingPaymentClient.initiate(
                         authorizationHeader,
@@ -138,6 +141,32 @@ public class ConsumerPaymentService {
         ));
         syncLocalPaymentStatus(data);
         return mapStatus(data);
+    }
+
+    // Payment is allowed only when the order has been accepted by the shop and is
+    // awaiting payment. Blocks payment on a still-pending or cancelled request.
+    private void requireOrderAcceptedForPayment(String paymentCode) {
+        ShopPaymentView payment = shopPaymentViewRepository.findByPaymentCode(paymentCode)
+                .orElseThrow(() -> new BusinessException("PAYMENT_NOT_FOUND", "Payment not found.", HttpStatus.NOT_FOUND));
+        ShopOrderView order = shopOrderViewRepository.findById(payment.getPayableId())
+                .orElseThrow(() -> new BusinessException("PAYMENT_NOT_FOUND", "Payment not found.", HttpStatus.NOT_FOUND));
+        String status = order.getOrderStatus() == null ? "" : order.getOrderStatus().trim().toUpperCase();
+        if ("PENDING_ACCEPTANCE".equals(status)) {
+            throw new BusinessException(
+                    "ORDER_NOT_ACCEPTED",
+                    "The shop hasn't accepted your order yet. Payment opens once it's accepted.",
+                    HttpStatus.CONFLICT
+            );
+        }
+        // ACCEPTED (awaiting payment) and PAYMENT_PENDING are payable. Anything
+        // else (CANCELLED / already paid / in progress) is rejected as a re-pay.
+        if (!"ACCEPTED".equals(status) && !"PAYMENT_PENDING".equals(status)) {
+            throw new BusinessException(
+                    "ORDER_NOT_PAYABLE",
+                    "This order can no longer be paid.",
+                    HttpStatus.CONFLICT
+            );
+        }
     }
 
     private void requireShopOrderPaymentOwnership(Long userId, String paymentCode) {

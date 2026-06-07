@@ -54,6 +54,8 @@ class ShopOrderWriteServiceTest {
     private MongoSequenceService mongoSequenceService;
     @Mock
     private ShopFeeSettingsService shopFeeSettingsService;
+    @Mock
+    private com.msa.shop_orders.persistence.repository.UserRepository userRepository;
 
     private ShopOrderWriteService service;
 
@@ -68,7 +70,8 @@ class ShopOrderWriteServiceTest {
                 shopProductViewRepository,
                 shopOrderViewRepository,
                 mongoSequenceService,
-                shopFeeSettingsService
+                shopFeeSettingsService,
+                userRepository
         );
     }
 
@@ -117,6 +120,7 @@ class ShopOrderWriteServiceTest {
         when(shopShellViewService.findByShopId(11L)).thenReturn(Optional.of(shop));
         // Platform fee is now resolved from app_settings (platform.fee.shop) on the subtotal.
         when(shopFeeSettingsService.shopPlatformFeeAmount(any())).thenReturn(new BigDecimal("5.00"));
+        when(userRepository.findById(7L)).thenReturn(Optional.empty());
         when(mongoSequenceService.nextValue("shop-order-id")).thenReturn(501L);
         when(shopOrderViewRepository.save(any(ShopOrderView.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
@@ -134,6 +138,7 @@ class ShopOrderWriteServiceTest {
                         "Home",
                         "Street 1",
                         "PAY-1",
+                        "Test Customer",
                         List.of(new ShopOrderWriteService.CreateOrderItemCommand(
                                 201L,
                                 2,

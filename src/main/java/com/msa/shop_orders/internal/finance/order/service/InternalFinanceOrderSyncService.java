@@ -71,6 +71,7 @@ public class InternalFinanceOrderSyncService {
                         null,
                         null,
                         null,
+                        null,
                         request.items().stream()
                                 .map(item -> new ShopOrderWriteService.CreateOrderItemCommand(
                                         item.variantId(),

@@ -42,6 +42,7 @@ public class ShopOrderWriteService {
     private final ShopOrderViewRepository shopOrderViewRepository;
     private final MongoSequenceService mongoSequenceService;
     private final ShopFeeSettingsService shopFeeSettingsService;
+    private final com.msa.shop_orders.persistence.repository.UserRepository userRepository;
 
     public ShopOrderWriteService(
             ShopLocationRepository shopLocationRepository,
@@ -52,7 +53,8 @@ public class ShopOrderWriteService {
             ShopProductViewRepository shopProductViewRepository,
             ShopOrderViewRepository shopOrderViewRepository,
             MongoSequenceService mongoSequenceService,
-            ShopFeeSettingsService shopFeeSettingsService
+            ShopFeeSettingsService shopFeeSettingsService,
+            com.msa.shop_orders.persistence.repository.UserRepository userRepository
     ) {
         this.shopLocationRepository = shopLocationRepository;
         this.shopDeliveryRuleViewService = shopDeliveryRuleViewService;
@@ -63,6 +65,7 @@ public class ShopOrderWriteService {
         this.shopOrderViewRepository = shopOrderViewRepository;
         this.mongoSequenceService = mongoSequenceService;
         this.shopFeeSettingsService = shopFeeSettingsService;
+        this.userRepository = userRepository;
     }
 
     public CreatedOrder createOrder(CreateOrderCommand command) {
@@ -155,6 +158,17 @@ public class ShopOrderWriteService {
         document.setUserId(command.userId());
         document.setOrderCode(generateOrderCode());
         document.setShopName(shop == null || shop.getShopName() == null || shop.getShopName().isBlank() ? "Shop" : shop.getShopName());
+        // Capture the customer's phone so the shop's order card can show + call it.
+        document.setCustomerPhone(
+                userRepository.findById(command.userId())
+                        .map(com.msa.shop_orders.persistence.entity.UserEntity::getPhone)
+                        .orElse(null)
+        );
+        // Recipient name supplied at checkout (defaults to the customer's profile name).
+        document.setCustomerName(
+                command.customerName() == null || command.customerName().isBlank()
+                        ? null : command.customerName().trim()
+        );
         document.setOrderStatus(command.orderStatus());
         document.setPaymentStatus(command.paymentStatus());
         document.setPaymentCode(command.paymentCode());
@@ -475,6 +489,7 @@ public class ShopOrderWriteService {
             String addressLabel,
             String addressLine,
             String paymentCode,
+            String customerName,
             List<CreateOrderItemCommand> items
     ) {
     }

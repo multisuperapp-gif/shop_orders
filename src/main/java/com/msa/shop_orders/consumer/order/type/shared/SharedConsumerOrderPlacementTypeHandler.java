@@ -12,6 +12,8 @@ import com.msa.shop_orders.consumer.order.dto.ConsumerPlaceOrderRequest;
 import com.msa.shop_orders.consumer.order.dto.ConsumerPlaceOrderResponse;
 import com.msa.shop_orders.consumer.order.service.ShopOrderWriteService;
 import com.msa.shop_orders.consumer.order.type.ConsumerOrderPlacementTypeHandler;
+import com.msa.shop_orders.integration.bookingpayment.ShopOrdersBookingPaymentOrderClient;
+import com.msa.shop_orders.integration.bookingpayment.dto.ShopOrdersBookingPaymentOrderDtos.NotifyShopOrderEventRequest;
 import com.msa.shop_orders.provider.shop.service.ShopInventoryMovementService;
 import com.msa.shop_orders.provider.shop.service.ShopRuntimeSyncService;
 import com.msa.shop_orders.provider.shop.view.ShopOrderView;
@@ -37,6 +39,7 @@ public class SharedConsumerOrderPlacementTypeHandler implements ConsumerOrderPla
     private final ShopInventoryMovementService shopInventoryMovementService;
     private final ShopRuntimeSyncService shopRuntimeSyncService;
     private final MongoSequenceService mongoSequenceService;
+    private final ShopOrdersBookingPaymentOrderClient bookingPaymentOrderClient;
 
     public SharedConsumerOrderPlacementTypeHandler(
             CurrentUserService currentUserService,
@@ -46,7 +49,8 @@ public class SharedConsumerOrderPlacementTypeHandler implements ConsumerOrderPla
             ShopPaymentViewRepository shopPaymentViewRepository,
             ShopInventoryMovementService shopInventoryMovementService,
             ShopRuntimeSyncService shopRuntimeSyncService,
-            MongoSequenceService mongoSequenceService
+            MongoSequenceService mongoSequenceService,
+            ShopOrdersBookingPaymentOrderClient bookingPaymentOrderClient
     ) {
         this.currentUserService = currentUserService;
         this.consumerCartService = consumerCartService;
@@ -56,6 +60,7 @@ public class SharedConsumerOrderPlacementTypeHandler implements ConsumerOrderPla
         this.shopInventoryMovementService = shopInventoryMovementService;
         this.shopRuntimeSyncService = shopRuntimeSyncService;
         this.mongoSequenceService = mongoSequenceService;
+        this.bookingPaymentOrderClient = bookingPaymentOrderClient;
     }
 
     @Override
@@ -86,13 +91,17 @@ public class SharedConsumerOrderPlacementTypeHandler implements ConsumerOrderPla
                         preview.fulfillmentType(),
                         preview.platformFee(),
                         preview.currencyCode(),
-                        "PAYMENT_PENDING",
+                        // Accept-first lifecycle (same as labour/service): the order
+                        // starts as a request awaiting the shop's acceptance — no
+                        // payment is taken until the shop accepts.
+                        "PENDING_ACCEPTANCE",
                         "PENDING",
-                        "Shop order created",
+                        "Shop order request created",
                         now,
                         preview.addressLabel(),
                         preview.addressLine(),
                         paymentCode,
+                        request.recipientName(),
                         cart.getItems().stream()
                                 .map(item -> new ShopOrderWriteService.CreateOrderItemCommand(
                                         item.getVariantId(),
@@ -120,17 +129,35 @@ public class SharedConsumerOrderPlacementTypeHandler implements ConsumerOrderPla
         shopRuntimeSyncService.syncOrderAfterCommit(createdOrder.orderId(), orderView);
         consumerCartService.clearCurrentCart();
 
+        // Accept-first: tell the shop a new order request is waiting for acceptance.
+        notifyShopOrderRequest(createdOrder);
+
         return new ConsumerPlaceOrderResponse(
                 createdOrder.orderId(),
                 createdOrder.orderCode(),
-                "PAYMENT_PENDING",
+                "PENDING_ACCEPTANCE",
                 "PENDING",
                 paymentId,
                 paymentCode,
                 preview.totalAmount(),
                 preview.currencyCode(),
-                "PROCEED_TO_PAYMENT"
+                "WAITING_FOR_ACCEPTANCE"
         );
+    }
+
+    private void notifyShopOrderRequest(ShopOrderWriteService.CreatedOrder order) {
+        try {
+            bookingPaymentOrderClient.notifyOrderEvent(new NotifyShopOrderEventRequest(
+                    "ORDER_REQUEST",
+                    order.shopId(),
+                    order.userId(),
+                    order.orderId(),
+                    order.orderCode(),
+                    null
+            ));
+        } catch (Exception ignored) {
+            // Notification is best-effort — never fail order placement on a push error.
+        }
     }
 
     private String selectedOptionsJson(ConsumerCartView.Item item) {
@@ -166,7 +193,7 @@ public class SharedConsumerOrderPlacementTypeHandler implements ConsumerOrderPla
         document.setUserId(order.userId());
         document.setOrderCode(order.orderCode());
         document.setShopName(order.shopName());
-        document.setOrderStatus("PAYMENT_PENDING");
+        document.setOrderStatus("PENDING_ACCEPTANCE");
         document.setPaymentStatus("INITIATED");
         document.setPaymentCode(order.paymentCode());
         document.setFulfillmentType(order.fulfillmentType());
@@ -221,7 +248,7 @@ public class SharedConsumerOrderPlacementTypeHandler implements ConsumerOrderPla
     private ShopOrderView.TimelineEvent buildInitialTimelineEvent(LocalDateTime changedAt) {
         ShopOrderView.TimelineEvent event = new ShopOrderView.TimelineEvent();
         event.setOldStatus(null);
-        event.setNewStatus("PAYMENT_PENDING");
+        event.setNewStatus("PENDING_ACCEPTANCE");
         event.setReason(null);
         event.setChangedAt(changedAt);
         return event;
