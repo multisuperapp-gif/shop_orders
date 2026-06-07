@@ -156,7 +156,8 @@ public class ConsumerCheckoutService {
         ShopProductDeliveryRuleData rule = shopDeliveryRuleViewService.findPrimaryDeliveryRule(shopId)
                 .orElseGet(() -> loadShopRuleSql(shopId).deliveryRule());
         OperatingHoursRow hours = loadOperatingHours(shopId);
-        LocalTime now = LocalTime.now();
+        // Compare against the shop's local time (IST), not the server's UTC.
+        LocalTime now = LocalTime.now(java.time.ZoneId.of("Asia/Kolkata"));
         boolean openNow = !hours.closed()
                 && hours.openTime() != null
                 && hours.closeTime() != null
@@ -308,7 +309,7 @@ public class ConsumerCheckoutService {
         if (!Boolean.TRUE.equals(coupon.getActive())) {
             return BigDecimal.ZERO;
         }
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(java.time.ZoneId.of("Asia/Kolkata"));
         if (coupon.getStartsAt() == null || coupon.getEndsAt() == null
                 || now.isBefore(coupon.getStartsAt()) || now.isAfter(coupon.getEndsAt())) {
             return BigDecimal.ZERO;
