@@ -18,6 +18,9 @@ public record ConsumerCartData(
         BigDecimal couponMinOrderAmount,
         // Discount for the current subtotal (0 when the coupon isn't eligible yet).
         BigDecimal couponDiscountAmount,
+        // Platform fee (platform.fee.shop %) for the current subtotal, added on top
+        // of the order total. 0 when the fee setting is unset/zero.
+        BigDecimal platformFeeAmount,
         // Whether the cart's shop is open and accepting orders right now.
         boolean shopAcceptsOrders
 ) {

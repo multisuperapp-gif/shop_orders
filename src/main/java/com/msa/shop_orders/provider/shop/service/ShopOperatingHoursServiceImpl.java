@@ -28,17 +28,20 @@ public class ShopOperatingHoursServiceImpl implements ShopOperatingHoursService 
     private final ShopLocationViewService shopLocationViewService;
     private final ShopDeliveryRuleViewService shopDeliveryRuleViewService;
     private final ShopOperatingHoursViewService shopOperatingHoursViewService;
+    private final ShopShellViewService shopShellViewService;
 
     public ShopOperatingHoursServiceImpl(
             ShopContextService shopContextService,
             ShopLocationViewService shopLocationViewService,
             ShopDeliveryRuleViewService shopDeliveryRuleViewService,
-            ShopOperatingHoursViewService shopOperatingHoursViewService
+            ShopOperatingHoursViewService shopOperatingHoursViewService,
+            ShopShellViewService shopShellViewService
     ) {
         this.shopContextService = shopContextService;
         this.shopLocationViewService = shopLocationViewService;
         this.shopDeliveryRuleViewService = shopDeliveryRuleViewService;
         this.shopOperatingHoursViewService = shopOperatingHoursViewService;
+        this.shopShellViewService = shopShellViewService;
     }
 
     @Override
@@ -108,6 +111,9 @@ public class ShopOperatingHoursServiceImpl implements ShopOperatingHoursService 
                 .stream()
                 .sorted(Comparator.comparing(ShopOperatingHoursView::getWeekday))
                 .toList();
+        // Operating hours feed into the work-setup-complete flag — recompute now that
+        // timing has changed (e.g. enabling a day can complete setup, disabling all days breaks it).
+        shopShellViewService.checkAndUpdateBusinessSetupComplete(shop.getShopId());
         return buildData(shop.getShopId(), locationId, savedRows);
     }
 

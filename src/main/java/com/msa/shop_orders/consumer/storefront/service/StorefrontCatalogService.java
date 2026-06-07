@@ -328,7 +328,9 @@ public class StorefrontCatalogService {
                 veg.servesVeg(),
                 veg.servesNonVeg(),
                 veg.servesEgg(),
-                hasOffer
+                hasOffer,
+                shop.getOperationalStatus(),
+                resolveCouponLabel(shopId)
         );
     }
 
@@ -339,6 +341,35 @@ public class StorefrontCatalogService {
                 .map(ShopShellView::getRestaurantCoupon)
                 .map(this::isCouponActive)
                 .orElse(false);
+    }
+
+    // A short ribbon label for the shop card when an active coupon exists, e.g.
+    // "50% OFF" (percentage) or "FLAT ₹100 OFF" (flat). Null when no live coupon.
+    private String resolveCouponLabel(Long shopId) {
+        return shopShellViewRepository.findById(shopId)
+                .map(ShopShellView::getRestaurantCoupon)
+                .filter(this::isCouponActive)
+                .map(this::buildCouponLabel)
+                .orElse(null);
+    }
+
+    private String buildCouponLabel(ShopShellView.RestaurantCoupon coupon) {
+        if (coupon == null || coupon.getDiscountValue() == null) {
+            return null;
+        }
+        String type = coupon.getDiscountType() == null
+                ? "" : coupon.getDiscountType().trim().toUpperCase();
+        int value = coupon.getDiscountValue().intValue();
+        if (value <= 0) {
+            return null;
+        }
+        if ("PERCENTAGE".equals(type)) {
+            return value + "% OFF";
+        }
+        if ("FLAT".equals(type)) {
+            return "FLAT ₹" + value + " OFF";
+        }
+        return null;
     }
 
     private boolean isCouponActive(ShopShellView.RestaurantCoupon coupon) {

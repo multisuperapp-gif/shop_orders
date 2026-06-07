@@ -43,6 +43,7 @@ public interface StorefrontCatalogRepository extends Repository<ShopEntity, Long
         BigDecimal getLatitude();
         BigDecimal getLongitude();
         String getRestaurantServiceType();
+        String getOperationalStatus();
     }
 
     @Query(value = """
@@ -97,7 +98,8 @@ public interface StorefrontCatalogRepository extends Repository<ShopEntity, Long
                 address.city AS city,
                 sl.latitude AS latitude,
                 sl.longitude AS longitude,
-                s.restaurant_service_type AS restaurantServiceType
+                s.restaurant_service_type AS restaurantServiceType,
+                s.operational_status AS operationalStatus
             FROM shops s
             LEFT JOIN files logo_file ON logo_file.id = s.logo_file_id
             LEFT JOIN files cover_file ON cover_file.id = s.cover_file_id
@@ -122,7 +124,8 @@ public interface StorefrontCatalogRepository extends Repository<ShopEntity, Long
                 address.city AS city,
                 sl.latitude AS latitude,
                 sl.longitude AS longitude,
-                s.restaurant_service_type AS restaurantServiceType
+                s.restaurant_service_type AS restaurantServiceType,
+                s.operational_status AS operationalStatus
             FROM shops s
             LEFT JOIN files logo_file ON logo_file.id = s.logo_file_id
             LEFT JOIN files cover_file ON cover_file.id = s.cover_file_id

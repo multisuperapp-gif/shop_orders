@@ -3,6 +3,7 @@ package com.msa.shop_orders.consumer.checkout.service;
 import com.msa.shop_orders.common.exception.BusinessException;
 import com.msa.shop_orders.common.shoptype.RestaurantItemVisibilityPolicy;
 import com.msa.shop_orders.common.shoptype.RestaurantVariantPromotionSupport;
+import com.msa.shop_orders.common.settings.ShopFeeSettingsService;
 import com.msa.shop_orders.consumer.cart.view.ConsumerCartView;
 import com.msa.shop_orders.consumer.cart.service.ConsumerCartService;
 import com.msa.shop_orders.consumer.checkout.dto.ConsumerCheckoutPreviewData;
@@ -44,6 +45,7 @@ public class ConsumerCheckoutService {
     private final ShopShellViewRepository shopShellViewRepository;
     private final ShopShellViewService shopShellViewService;
     private final ShopProductViewRepository shopProductViewRepository;
+    private final ShopFeeSettingsService shopFeeSettingsService;
 
     public ConsumerCheckoutService(
             CurrentUserService currentUserService,
@@ -54,7 +56,8 @@ public class ConsumerCheckoutService {
             ShopOperatingHoursViewService shopOperatingHoursViewService,
             ShopShellViewRepository shopShellViewRepository,
             ShopShellViewService shopShellViewService,
-            ShopProductViewRepository shopProductViewRepository
+            ShopProductViewRepository shopProductViewRepository,
+            ShopFeeSettingsService shopFeeSettingsService
     ) {
         this.currentUserService = currentUserService;
         this.consumerCartService = consumerCartService;
@@ -65,6 +68,7 @@ public class ConsumerCheckoutService {
         this.shopShellViewRepository = shopShellViewRepository;
         this.shopShellViewService = shopShellViewService;
         this.shopProductViewRepository = shopProductViewRepository;
+        this.shopFeeSettingsService = shopFeeSettingsService;
     }
 
     @Transactional(readOnly = true)
@@ -98,7 +102,10 @@ public class ConsumerCheckoutService {
         BigDecimal deliveryFee = "PICKUP".equals(fulfillmentType)
                 ? BigDecimal.ZERO
                 : calculateDeliveryFee(shop, subtotal);
-        BigDecimal platformFee = BigDecimal.ZERO;
+        // Platform fee (platform.fee.shop %) on the item subtotal — mirrors the
+        // authoritative computation in ShopOrderWriteService so the preview total
+        // matches what the user is actually charged.
+        BigDecimal platformFee = shopFeeSettingsService.shopPlatformFeeAmount(subtotal);
         BigDecimal couponEligibleSubtotal = resolveCouponEligibleSubtotal(cart);
         BigDecimal discountAmount = resolveRestaurantCouponDiscount(shopShell, couponEligibleSubtotal);
         BigDecimal totalAmount = subtotal.add(deliveryFee).add(platformFee).subtract(discountAmount).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);

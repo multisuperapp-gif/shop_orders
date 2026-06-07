@@ -159,7 +159,9 @@ public final class StorefrontDtos {
             boolean servesVeg,
             boolean servesNonVeg,
             boolean servesEgg,
-            boolean hasOffer
+            boolean hasOffer,
+            String operationalStatus,
+            String couponLabel
     ) {
     }
 

@@ -4,6 +4,7 @@ import com.msa.shop_orders.common.exception.BusinessException;
 import com.msa.shop_orders.common.shoptype.RestaurantVariantPromotionSupport;
 import com.msa.shop_orders.common.shoptype.RestaurantItemVisibilityPolicy;
 import com.msa.shop_orders.common.mongo.MongoSequenceService;
+import com.msa.shop_orders.common.settings.ShopFeeSettingsService;
 import com.msa.shop_orders.persistence.entity.ShopLocationEntity;
 import com.msa.shop_orders.persistence.entity.UserAddressEntity;
 import com.msa.shop_orders.persistence.repository.ShopLocationRepository;
@@ -40,6 +41,7 @@ public class ShopOrderWriteService {
     private final ShopProductViewRepository shopProductViewRepository;
     private final ShopOrderViewRepository shopOrderViewRepository;
     private final MongoSequenceService mongoSequenceService;
+    private final ShopFeeSettingsService shopFeeSettingsService;
 
     public ShopOrderWriteService(
             ShopLocationRepository shopLocationRepository,
@@ -49,7 +51,8 @@ public class ShopOrderWriteService {
             ShopShellViewService shopShellViewService,
             ShopProductViewRepository shopProductViewRepository,
             ShopOrderViewRepository shopOrderViewRepository,
-            MongoSequenceService mongoSequenceService
+            MongoSequenceService mongoSequenceService,
+            ShopFeeSettingsService shopFeeSettingsService
     ) {
         this.shopLocationRepository = shopLocationRepository;
         this.shopDeliveryRuleViewService = shopDeliveryRuleViewService;
@@ -59,6 +62,7 @@ public class ShopOrderWriteService {
         this.shopProductViewRepository = shopProductViewRepository;
         this.shopOrderViewRepository = shopOrderViewRepository;
         this.mongoSequenceService = mongoSequenceService;
+        this.shopFeeSettingsService = shopFeeSettingsService;
     }
 
     public CreatedOrder createOrder(CreateOrderCommand command) {
@@ -136,7 +140,9 @@ public class ShopOrderWriteService {
 
         String fulfillmentType = normalizeFulfillmentType(command.fulfillmentType());
         BigDecimal deliveryFee = resolveDeliveryFee(fulfillmentType, deliveryRule, subtotal);
-        BigDecimal platformFee = command.platformFeeAmount() == null ? BigDecimal.ZERO : command.platformFeeAmount();
+        // Platform fee is a percentage of the item subtotal, read from app_settings
+        // (platform.fee.shop) and added on top of the order total.
+        BigDecimal platformFee = shopFeeSettingsService.shopPlatformFeeAmount(subtotal);
         BigDecimal couponEligibleSubtotal = resolveCouponEligibleSubtotal(createdItems, selectionsByVariantId);
         BigDecimal discountAmount = resolveRestaurantCouponDiscount(shop, couponEligibleSubtotal);
         BigDecimal totalAmount = subtotal.add(deliveryFee).add(platformFee).subtract(discountAmount).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
