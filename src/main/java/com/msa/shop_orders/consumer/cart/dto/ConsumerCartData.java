@@ -17,6 +17,8 @@ public record ConsumerCartData(
         String couponTitle,
         BigDecimal couponMinOrderAmount,
         // Discount for the current subtotal (0 when the coupon isn't eligible yet).
-        BigDecimal couponDiscountAmount
+        BigDecimal couponDiscountAmount,
+        // Whether the cart's shop is open and accepting orders right now.
+        boolean shopAcceptsOrders
 ) {
 }

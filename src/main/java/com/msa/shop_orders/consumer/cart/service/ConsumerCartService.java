@@ -13,7 +13,9 @@ import com.msa.shop_orders.persistence.entity.FileEntity;
 import com.msa.shop_orders.persistence.entity.ProductOptionEntity;
 import com.msa.shop_orders.persistence.repository.FileRepository;
 import com.msa.shop_orders.persistence.repository.ProductOptionRepository;
+import com.msa.shop_orders.provider.shop.service.ShopOperatingHoursViewService;
 import com.msa.shop_orders.provider.shop.service.ShopShellViewService;
+import com.msa.shop_orders.provider.shop.view.ShopOperatingHoursView;
 import com.msa.shop_orders.provider.shop.view.ShopProductView;
 import com.msa.shop_orders.provider.shop.view.repository.ShopProductViewRepository;
 import com.msa.shop_orders.provider.shop.view.ShopShellView;
@@ -52,6 +54,8 @@ public class ConsumerCartService {
     private final FileRepository fileRepository;
     private final ShopShellViewRepository shopShellViewRepository;
     private final ShopShellViewService shopShellViewService;
+    private final ShopOperatingHoursViewService shopOperatingHoursViewService;
+    private static final java.time.ZoneId SHOP_ZONE = java.time.ZoneId.of("Asia/Kolkata");
 
     public ConsumerCartService(
             ConsumerCartViewRepository consumerCartViewRepository,
@@ -60,7 +64,8 @@ public class ConsumerCartService {
             ProductOptionRepository productOptionRepository,
             FileRepository fileRepository,
             ShopShellViewRepository shopShellViewRepository,
-            ShopShellViewService shopShellViewService
+            ShopShellViewService shopShellViewService,
+            ShopOperatingHoursViewService shopOperatingHoursViewService
     ) {
         this.consumerCartViewRepository = consumerCartViewRepository;
         this.currentUserService = currentUserService;
@@ -69,6 +74,40 @@ public class ConsumerCartService {
         this.fileRepository = fileRepository;
         this.shopShellViewRepository = shopShellViewRepository;
         this.shopShellViewService = shopShellViewService;
+        this.shopOperatingHoursViewService = shopOperatingHoursViewService;
+    }
+
+    // True when the cart's shop is open right now (today's hours, IST).
+    private boolean isShopOpenNow(Long shopId) {
+        if (shopId == null) {
+            return false;
+        }
+        java.time.LocalDate today = java.time.LocalDate.now(SHOP_ZONE);
+        java.time.LocalTime now = java.time.LocalTime.now(SHOP_ZONE);
+        int weekday = today.getDayOfWeek().getValue(); // ISO Mon=1..Sun=7
+        ShopOperatingHoursView hours = shopOperatingHoursViewService
+                .findByShopIdAndWeekday(shopId, weekday).orElse(null);
+        if (hours == null || hours.isClosed()) {
+            return false;
+        }
+        java.time.LocalTime open = parseLocalTime(hours.getOpenTime());
+        java.time.LocalTime close = parseLocalTime(hours.getCloseTime());
+        if (open == null || close == null) {
+            return false;
+        }
+        return !now.isBefore(open) && !now.isAfter(close);
+    }
+
+    private java.time.LocalTime parseLocalTime(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String value = raw.trim();
+        try {
+            return java.time.LocalTime.parse(value.length() > 5 ? value.substring(0, 5) : value);
+        } catch (Exception ex) {
+            return null;
+        }
     }
 
     @Transactional(readOnly = true)
@@ -222,7 +261,7 @@ public class ConsumerCartService {
 
     private ConsumerCartData toCartData(Long userId, ConsumerCartView cart) {
         if (cart == null || cart.getItems() == null || cart.getItems().isEmpty()) {
-            return new ConsumerCartData(userId, null, null, DEFAULT_CURRENCY, null, 0, BigDecimal.ZERO, List.of(), null, null, null, BigDecimal.ZERO);
+            return new ConsumerCartData(userId, null, null, DEFAULT_CURRENCY, null, 0, BigDecimal.ZERO, List.of(), null, null, null, BigDecimal.ZERO, false);
         }
         Map<Long, String> imageKeysByFileId = fileRepository.findAllById(cart.getItems().stream()
                         .map(ConsumerCartView.Item::getImageFileId)
@@ -272,7 +311,8 @@ public class ConsumerCartService {
                 couponCode,
                 couponTitle,
                 couponMinOrderAmount,
-                couponDiscountAmount
+                couponDiscountAmount,
+                isShopOpenNow(cart.getShopId())
         );
     }
 
