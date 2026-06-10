@@ -67,15 +67,16 @@ public class SharedProviderShopOrderTypeHandler implements ProviderShopOrderType
                     existing.getPaymentStatus() == null ? "" : existing.getPaymentStatus().trim());
             // Accept-first: an unpaid order (pending request or accepted-awaiting-
             // payment) has no payment to refund, and booking-payment has no finance
-            // context for it — so reject/cancel it locally: release the reserved
-            // stock, mark CANCELLED, and notify the customer.
+            // context for it — so reject it locally: release the reserved stock,
+            // mark REJECTED (hidden from customer + shop, admin-only audit), and
+            // notify the customer.
             if (!paid
                     && ("PENDING_ACCEPTANCE".equals(oldStatus) || "ACCEPTED".equals(oldStatus))) {
                 internalFinanceOrderSyncService.releaseInventory(orderId);
                 shopOrderStateWriteService.applyStateUpdate(
                         orderId,
                         new ShopOrderStateWriteService.OrderStateMutation(
-                                "CANCELLED",
+                                "REJECTED",
                                 "FAILED",
                                 changedByUserId,
                                 blankToNull(request.reason()),

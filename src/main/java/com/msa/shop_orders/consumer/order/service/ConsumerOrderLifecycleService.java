@@ -4,7 +4,9 @@ import com.msa.shop_orders.common.exception.BusinessException;
 import com.msa.shop_orders.integration.bookingpayment.ShopOrdersBookingPaymentOrderClient;
 import com.msa.shop_orders.integration.bookingpayment.dto.ShopOrdersBookingPaymentApiResponse;
 import com.msa.shop_orders.integration.bookingpayment.dto.ShopOrdersBookingPaymentOrderDtos.CancelShopOrderRequest;
+import com.msa.shop_orders.internal.finance.order.service.InternalFinanceOrderSyncService;
 import com.msa.shop_orders.provider.shop.view.ShopOrderView;
+import com.msa.shop_orders.provider.shop.service.ShopOrderStateWriteService;
 import com.msa.shop_orders.provider.shop.service.ShopRuntimeViewService;
 import com.msa.shop_orders.security.CurrentUserService;
 import feign.FeignException;
@@ -17,15 +19,21 @@ public class ConsumerOrderLifecycleService {
     private final CurrentUserService currentUserService;
     private final ShopRuntimeViewService shopRuntimeViewService;
     private final ShopOrdersBookingPaymentOrderClient shopOrdersBookingPaymentOrderClient;
+    private final InternalFinanceOrderSyncService internalFinanceOrderSyncService;
+    private final ShopOrderStateWriteService shopOrderStateWriteService;
 
     public ConsumerOrderLifecycleService(
             CurrentUserService currentUserService,
             ShopRuntimeViewService shopRuntimeViewService,
-            ShopOrdersBookingPaymentOrderClient shopOrdersBookingPaymentOrderClient
+            ShopOrdersBookingPaymentOrderClient shopOrdersBookingPaymentOrderClient,
+            InternalFinanceOrderSyncService internalFinanceOrderSyncService,
+            ShopOrderStateWriteService shopOrderStateWriteService
     ) {
         this.currentUserService = currentUserService;
         this.shopRuntimeViewService = shopRuntimeViewService;
         this.shopOrdersBookingPaymentOrderClient = shopOrdersBookingPaymentOrderClient;
+        this.internalFinanceOrderSyncService = internalFinanceOrderSyncService;
+        this.shopOrderStateWriteService = shopOrderStateWriteService;
     }
 
     @Transactional
@@ -35,6 +43,31 @@ public class ConsumerOrderLifecycleService {
         if (order == null) {
             throw new BusinessException("ORDER_NOT_FOUND", "Order not found.", HttpStatus.NOT_FOUND);
         }
+
+        String status = order.getOrderStatus() == null ? "" : order.getOrderStatus().trim().toUpperCase();
+        boolean paid = "PAID".equalsIgnoreCase(
+                order.getPaymentStatus() == null ? "" : order.getPaymentStatus().trim());
+        // Accept-first: an unpaid order (awaiting acceptance, or accepted but not
+        // yet paid) has no payment to refund and booking-payment has no finance
+        // context for it — routing it there fails (404) and leaves the order stuck
+        // as PENDING_ACCEPTANCE, so it keeps showing/ringing in the shop app.
+        // Cancel locally instead: release the reserved stock + mark CANCELLED. The
+        // shop's 3s incoming-order poll then drops it from the live list/ring.
+        if (!paid && ("PENDING_ACCEPTANCE".equals(status) || "ACCEPTED".equals(status))) {
+            internalFinanceOrderSyncService.releaseInventory(orderId);
+            shopOrderStateWriteService.applyStateUpdate(
+                    orderId,
+                    new ShopOrderStateWriteService.OrderStateMutation(
+                            "CANCELLED",
+                            "FAILED",
+                            userId,
+                            reason == null || reason.isBlank() ? "Cancelled by the customer." : reason,
+                            null
+                    )
+            );
+            return;
+        }
+
         try {
             ShopOrdersBookingPaymentApiResponse<Void> response = shopOrdersBookingPaymentOrderClient.cancelByUser(
                     userId,

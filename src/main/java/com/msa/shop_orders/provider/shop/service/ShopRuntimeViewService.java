@@ -112,6 +112,9 @@ public class ShopRuntimeViewService {
         return filterOrderData(
                 shopOrderViewRepository.findByShopIdOrderByCreatedAtDesc(shopEntity.getShopId()).stream()
                         .map(this::toShopOrderData)
+                        // REJECTED orders (shop rejected, or auto-rejected on no-accept
+                        // timeout) are hidden from the shop — admin-only for audit.
+                        .filter(order -> !"REJECTED".equalsIgnoreCase(order.orderStatus()))
                         .toList(),
                 dateFilter,
                 status,
@@ -147,6 +150,7 @@ public class ShopRuntimeViewService {
                 .map(this::toShopOrderData)
                 .filter(order -> !"DELIVERED".equalsIgnoreCase(order.orderStatus()))
                 .filter(order -> !"CANCELLED".equalsIgnoreCase(order.orderStatus()))
+                .filter(order -> !"REJECTED".equalsIgnoreCase(order.orderStatus()))
                 .toList();
     }
 

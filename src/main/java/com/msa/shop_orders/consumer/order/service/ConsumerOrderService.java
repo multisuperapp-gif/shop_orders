@@ -29,6 +29,9 @@ public class ConsumerOrderService {
     public List<ConsumerOrderSummaryData> orders() {
         Long userId = currentUserService.currentUser().userId();
         return shopRuntimeViewService.loadConsumerOrders(userId).stream()
+                // REJECTED orders (shop rejected, or auto-rejected on no-accept
+                // timeout) are hidden from the customer — admin-only for audit.
+                .filter(order -> !"REJECTED".equalsIgnoreCase(order.getOrderStatus()))
                 .map(this::toSummaryData)
                 .toList();
     }

@@ -60,16 +60,17 @@ public class ShopOrderPaymentTimeoutScheduler {
                 continue;
             }
             try {
-                // Unpaid timeout — cancel locally (no payment to refund): release
-                // the reserved stock, mark CANCELLED, and notify the customer.
+                // Unpaid timeout — auto-reject locally (no payment to refund):
+                // release the reserved stock, mark REJECTED (treated like a
+                // no-accept; hidden from customer + shop, admin-only), and notify.
                 internalFinanceOrderSyncService.releaseInventory(order.getOrderId());
                 shopOrderStateWriteService.applyStateUpdate(
                         order.getOrderId(),
                         new ShopOrderStateWriteService.OrderStateMutation(
-                                "CANCELLED",
+                                "REJECTED",
                                 "FAILED",
                                 null,
-                                "Payment time expired — order auto-cancelled.",
+                                "Payment time expired — order auto-rejected.",
                                 null
                         )
                 );
