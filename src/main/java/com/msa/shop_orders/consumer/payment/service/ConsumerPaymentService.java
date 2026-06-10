@@ -11,12 +11,15 @@ import com.msa.shop_orders.provider.shop.view.repository.ShopOrderViewRepository
 import com.msa.shop_orders.provider.shop.view.repository.ShopPaymentViewRepository;
 import com.msa.shop_orders.security.CurrentUserService;
 import feign.FeignException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ConsumerPaymentService {
+    private static final Logger log = LoggerFactory.getLogger(ConsumerPaymentService.class);
     private final CurrentUserService currentUserService;
     private final ShopPaymentViewRepository shopPaymentViewRepository;
     private final ShopOrderViewRepository shopOrderViewRepository;
@@ -34,7 +37,7 @@ public class ConsumerPaymentService {
         this.shopOrdersBookingPaymentClient = shopOrdersBookingPaymentClient;
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public ConsumerPaymentDtos.PaymentStatusData status(String authorizationHeader, String paymentCode) {
         Long userId = currentUserService.currentUser().userId();
         requireShopOrderPaymentOwnership(userId, paymentCode);
@@ -45,7 +48,7 @@ public class ConsumerPaymentService {
         return mapStatus(data);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public ConsumerPaymentDtos.PaymentInitiateData initiate(
             String authorizationHeader,
             String paymentCode,
@@ -95,7 +98,7 @@ public class ConsumerPaymentService {
         );
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public ConsumerPaymentDtos.PaymentStatusData verify(
             String authorizationHeader,
             String paymentCode,
@@ -119,7 +122,7 @@ public class ConsumerPaymentService {
         return mapStatus(data);
     }
 
-    @Transactional(readOnly = true)
+    @Transactional
     public ConsumerPaymentDtos.PaymentStatusData failure(
             String authorizationHeader,
             String paymentCode,
@@ -204,33 +207,41 @@ public class ConsumerPaymentService {
         if (data == null || data.paymentCode() == null || data.paymentCode().isBlank()) {
             return;
         }
-        ShopPaymentView payment = shopPaymentViewRepository.findByPaymentCode(data.paymentCode())
-                .orElseGet(ShopPaymentView::new);
-        payment.setPaymentId(data.paymentId());
-        payment.setPaymentCode(data.paymentCode());
-        payment.setPayableType(data.payableType());
-        payment.setPayableId(data.payableId());
-        payment.setPaymentStatus(data.paymentStatus());
-        payment.setAmount(data.amount());
-        payment.setCurrencyCode(data.currencyCode());
-        payment.setGatewayName(data.gatewayName());
-        payment.setGatewayOrderId(data.gatewayOrderId());
-        payment.setLatestAttemptStatus(data.latestAttemptStatus());
-        payment.setLatestGatewayTransactionId(data.latestGatewayTransactionId());
-        payment.setInitiatedAt(data.initiatedAt());
-        payment.setCompletedAt(data.completedAt());
-        shopPaymentViewRepository.save(payment);
+        // Best-effort local mirror. booking-payment is the authoritative source for
+        // the payment, so a failure to update the local shop_orders view must NOT
+        // fail the payment request (otherwise the whole call 500s and the customer
+        // sees "shop order service is unavailable").
+        try {
+            ShopPaymentView payment = shopPaymentViewRepository.findByPaymentCode(data.paymentCode())
+                    .orElseGet(ShopPaymentView::new);
+            payment.setPaymentId(data.paymentId());
+            payment.setPaymentCode(data.paymentCode());
+            payment.setPayableType(data.payableType());
+            payment.setPayableId(data.payableId());
+            payment.setPaymentStatus(data.paymentStatus());
+            payment.setAmount(data.amount());
+            payment.setCurrencyCode(data.currencyCode());
+            payment.setGatewayName(data.gatewayName());
+            payment.setGatewayOrderId(data.gatewayOrderId());
+            payment.setLatestAttemptStatus(data.latestAttemptStatus());
+            payment.setLatestGatewayTransactionId(data.latestGatewayTransactionId());
+            payment.setInitiatedAt(data.initiatedAt());
+            payment.setCompletedAt(data.completedAt());
+            shopPaymentViewRepository.save(payment);
 
-        if (!"SHOP_ORDER".equalsIgnoreCase(data.payableType()) || data.payableId() == null) {
-            return;
-        }
-        shopOrderViewRepository.findById(data.payableId()).ifPresent(order -> {
-            order.setPaymentStatus(data.paymentStatus());
-            if (data.paymentCode() != null && !data.paymentCode().isBlank()) {
-                order.setPaymentCode(data.paymentCode());
+            if (!"SHOP_ORDER".equalsIgnoreCase(data.payableType()) || data.payableId() == null) {
+                return;
             }
-            shopOrderViewRepository.save(order);
-        });
+            shopOrderViewRepository.findById(data.payableId()).ifPresent(order -> {
+                order.setPaymentStatus(data.paymentStatus());
+                if (data.paymentCode() != null && !data.paymentCode().isBlank()) {
+                    order.setPaymentCode(data.paymentCode());
+                }
+                shopOrderViewRepository.save(order);
+            });
+        } catch (RuntimeException exception) {
+            log.warn("Failed to mirror payment status locally paymentCode={}", data.paymentCode(), exception);
+        }
     }
 
     private static <T> T requireData(ShopOrdersBookingPaymentApiResponse<T> response) {
@@ -262,6 +273,8 @@ public class ConsumerPaymentService {
                     HttpStatus.BAD_REQUEST
             );
         } catch (FeignException exception) {
+            log.error("booking-payment call failed status={} body={}",
+                    exception.status(), exception.contentUTF8(), exception);
             throw new BusinessException("PAYMENT_SERVICE_UNAVAILABLE", "Payment service is unavailable right now.", HttpStatus.BAD_REQUEST);
         }
     }
