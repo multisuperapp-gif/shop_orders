@@ -26,17 +26,20 @@ public class SharedProviderShopOrderTypeHandler implements ProviderShopOrderType
     private final ShopOrderStateWriteService shopOrderStateWriteService;
     private final ShopOrdersBookingPaymentOrderClient bookingPaymentOrderClient;
     private final ShopOrderViewRepository shopOrderViewRepository;
+    private final com.msa.shop_orders.internal.finance.order.service.InternalFinanceOrderSyncService internalFinanceOrderSyncService;
 
     public SharedProviderShopOrderTypeHandler(
             ShopRuntimeViewService shopRuntimeViewService,
             ShopOrderStateWriteService shopOrderStateWriteService,
             ShopOrdersBookingPaymentOrderClient bookingPaymentOrderClient,
-            ShopOrderViewRepository shopOrderViewRepository
+            ShopOrderViewRepository shopOrderViewRepository,
+            com.msa.shop_orders.internal.finance.order.service.InternalFinanceOrderSyncService internalFinanceOrderSyncService
     ) {
         this.shopRuntimeViewService = shopRuntimeViewService;
         this.shopOrderStateWriteService = shopOrderStateWriteService;
         this.bookingPaymentOrderClient = bookingPaymentOrderClient;
         this.shopOrderViewRepository = shopOrderViewRepository;
+        this.internalFinanceOrderSyncService = internalFinanceOrderSyncService;
     }
 
     @Override
@@ -60,6 +63,29 @@ public class SharedProviderShopOrderTypeHandler implements ProviderShopOrderType
             return shopRuntimeViewService.loadOrder(shop, orderId);
         }
         if ("CANCELLED".equalsIgnoreCase(newStatus)) {
+            boolean paid = "PAID".equalsIgnoreCase(
+                    existing.getPaymentStatus() == null ? "" : existing.getPaymentStatus().trim());
+            // Accept-first: an unpaid order (pending request or accepted-awaiting-
+            // payment) has no payment to refund, and booking-payment has no finance
+            // context for it — so reject/cancel it locally: release the reserved
+            // stock, mark CANCELLED, and notify the customer.
+            if (!paid
+                    && ("PENDING_ACCEPTANCE".equals(oldStatus) || "ACCEPTED".equals(oldStatus))) {
+                internalFinanceOrderSyncService.releaseInventory(orderId);
+                shopOrderStateWriteService.applyStateUpdate(
+                        orderId,
+                        new ShopOrderStateWriteService.OrderStateMutation(
+                                "CANCELLED",
+                                "FAILED",
+                                changedByUserId,
+                                blankToNull(request.reason()),
+                                null
+                        )
+                );
+                notifyOrderEvent("ORDER_REJECTED", existing, blankToNull(request.reason()));
+                return shopRuntimeViewService.loadOrder(shop, orderId);
+            }
+            // Paid order → booking-payment handles the refund + customer notice.
             bookingPaymentOrderClient.updateStatus(new UpdateShopOrderStatusRequest(
                     orderId,
                     newStatus,
@@ -67,10 +93,6 @@ public class SharedProviderShopOrderTypeHandler implements ProviderShopOrderType
                     blankToNull(request.reason()),
                     null
             ));
-            // Rejecting a still-pending request → tell the customer it was declined.
-            if ("PENDING_ACCEPTANCE".equals(oldStatus)) {
-                notifyOrderEvent("ORDER_REJECTED", existing, blankToNull(request.reason()));
-            }
             return shopRuntimeViewService.loadOrder(shop, orderId);
         }
         validateLocalTransition(oldStatus, newStatus);

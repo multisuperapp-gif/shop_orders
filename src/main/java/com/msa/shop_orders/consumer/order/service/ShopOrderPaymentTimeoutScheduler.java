@@ -1,7 +1,9 @@
 package com.msa.shop_orders.consumer.order.service;
 
 import com.msa.shop_orders.integration.bookingpayment.ShopOrdersBookingPaymentOrderClient;
-import com.msa.shop_orders.integration.bookingpayment.dto.ShopOrdersBookingPaymentOrderDtos.UpdateShopOrderStatusRequest;
+import com.msa.shop_orders.integration.bookingpayment.dto.ShopOrdersBookingPaymentOrderDtos.NotifyShopOrderEventRequest;
+import com.msa.shop_orders.internal.finance.order.service.InternalFinanceOrderSyncService;
+import com.msa.shop_orders.provider.shop.service.ShopOrderStateWriteService;
 import com.msa.shop_orders.provider.shop.view.ShopOrderView;
 import com.msa.shop_orders.provider.shop.view.repository.ShopOrderViewRepository;
 import java.time.LocalDateTime;
@@ -25,13 +27,19 @@ public class ShopOrderPaymentTimeoutScheduler {
 
     private final ShopOrderViewRepository shopOrderViewRepository;
     private final ShopOrdersBookingPaymentOrderClient bookingPaymentOrderClient;
+    private final InternalFinanceOrderSyncService internalFinanceOrderSyncService;
+    private final ShopOrderStateWriteService shopOrderStateWriteService;
 
     public ShopOrderPaymentTimeoutScheduler(
             ShopOrderViewRepository shopOrderViewRepository,
-            ShopOrdersBookingPaymentOrderClient bookingPaymentOrderClient
+            ShopOrdersBookingPaymentOrderClient bookingPaymentOrderClient,
+            InternalFinanceOrderSyncService internalFinanceOrderSyncService,
+            ShopOrderStateWriteService shopOrderStateWriteService
     ) {
         this.shopOrderViewRepository = shopOrderViewRepository;
         this.bookingPaymentOrderClient = bookingPaymentOrderClient;
+        this.internalFinanceOrderSyncService = internalFinanceOrderSyncService;
+        this.shopOrderStateWriteService = shopOrderStateWriteService;
     }
 
     // Runs every minute. Cheap query (status + timestamp) over shop orders.
@@ -52,16 +60,38 @@ public class ShopOrderPaymentTimeoutScheduler {
                 continue;
             }
             try {
-                bookingPaymentOrderClient.updateStatus(new UpdateShopOrderStatusRequest(
+                // Unpaid timeout — cancel locally (no payment to refund): release
+                // the reserved stock, mark CANCELLED, and notify the customer.
+                internalFinanceOrderSyncService.releaseInventory(order.getOrderId());
+                shopOrderStateWriteService.applyStateUpdate(
                         order.getOrderId(),
-                        "CANCELLED",
-                        null,
-                        "Payment time expired — order auto-cancelled.",
-                        null
-                ));
+                        new ShopOrderStateWriteService.OrderStateMutation(
+                                "CANCELLED",
+                                "FAILED",
+                                null,
+                                "Payment time expired — order auto-cancelled.",
+                                null
+                        )
+                );
+                notifyTimeout(order);
             } catch (Exception exception) {
                 log.warn("Failed to auto-cancel expired accepted shop order {}", order.getOrderId(), exception);
             }
+        }
+    }
+
+    private void notifyTimeout(ShopOrderView order) {
+        try {
+            bookingPaymentOrderClient.notifyOrderEvent(new NotifyShopOrderEventRequest(
+                    "ORDER_TIMEOUT",
+                    order.getShopId(),
+                    order.getUserId(),
+                    order.getOrderId(),
+                    order.getOrderCode(),
+                    null
+            ));
+        } catch (Exception ignored) {
+            // Best-effort push.
         }
     }
 }
