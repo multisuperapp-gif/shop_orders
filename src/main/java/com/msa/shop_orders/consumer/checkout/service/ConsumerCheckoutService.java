@@ -117,6 +117,8 @@ public class ConsumerCheckoutService {
                 address.addressId(),
                 address.label(),
                 address.addressLine(),
+                address.latitude(),
+                address.longitude(),
                 fulfillmentType,
                 itemCount,
                 subtotal,
@@ -156,7 +158,8 @@ public class ConsumerCheckoutService {
         if (address == null) {
             throw new BusinessException("ADDRESS_NOT_FOUND", "Address not found.", HttpStatus.NOT_FOUND);
         }
-        return new AddressRow(address.getId(), address.getLabel(), formatAddress(address));
+        return new AddressRow(address.getId(), address.getLabel(), formatAddress(address),
+                address.getLatitude(), address.getLongitude());
     }
 
     private ShopRuleRow loadShopRule(Long shopId) {
@@ -390,7 +393,9 @@ public class ConsumerCheckoutService {
     private record AddressRow(
             Long addressId,
             String label,
-            String addressLine
+            String addressLine,
+            BigDecimal latitude,
+            BigDecimal longitude
     ) {
     }
 

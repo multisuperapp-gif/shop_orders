@@ -10,6 +10,8 @@ public record ConsumerCheckoutPreviewData(
         Long addressId,
         String addressLabel,
         String addressLine,
+        BigDecimal deliveryLatitude,
+        BigDecimal deliveryLongitude,
         String fulfillmentType,
         int itemCount,
         BigDecimal subtotal,

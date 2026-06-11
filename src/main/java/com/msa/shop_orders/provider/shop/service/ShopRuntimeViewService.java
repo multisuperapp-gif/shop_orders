@@ -337,6 +337,9 @@ public class ShopRuntimeViewService {
                 defaultAmount(document.getTotalOrderValue()),
                 document.getAddressLabel(),
                 document.getAddressLine(),
+                document.getDeliveryLatitude(),
+                document.getDeliveryLongitude(),
+                resolveCancelReason(document),
                 Optional.ofNullable(document.getItems()).orElse(List.of()).stream()
                         .map(item -> new ShopOrderItemData(
                                 item.getItemName(),
@@ -347,6 +350,27 @@ public class ShopRuntimeViewService {
                         ))
                         .toList()
         );
+    }
+
+    // Reason captured in the timeline when the order was cancelled/rejected, so
+    // the shop card can show why (and in a distinct colour).
+    private String resolveCancelReason(ShopOrderView document) {
+        String status = document.getOrderStatus() == null ? "" : document.getOrderStatus().trim().toUpperCase();
+        if (!"CANCELLED".equals(status) && !"REJECTED".equals(status)) {
+            return null;
+        }
+        if (document.getTimeline() == null) {
+            return null;
+        }
+        String reason = null;
+        for (ShopOrderView.TimelineEvent event : document.getTimeline()) {
+            String newStatus = event.getNewStatus() == null ? "" : event.getNewStatus().trim().toUpperCase();
+            if (("CANCELLED".equals(newStatus) || "REJECTED".equals(newStatus))
+                    && event.getReason() != null && !event.getReason().isBlank()) {
+                reason = event.getReason().trim();
+            }
+        }
+        return reason;
     }
 
     private ShopProductDeliveryRuleData resolveDeliveryRule(Long shopId) {

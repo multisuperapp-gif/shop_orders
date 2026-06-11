@@ -117,6 +117,9 @@ public class SharedConsumerOrderPlacementTypeHandler implements ConsumerOrderPla
 
         Long paymentId = insertPayment(createdOrder.orderId(), userId, preview.totalAmount(), preview.currencyCode(), paymentCode, now);
         ShopOrderView orderView = buildOrderView(createdOrder, now);
+        // Delivery location so the shop's order card can show it on a map.
+        orderView.setDeliveryLatitude(preview.deliveryLatitude());
+        orderView.setDeliveryLongitude(preview.deliveryLongitude());
 
         shopInventoryMovementService.recordReserveAfterCommit(
                 createdOrder.shopId(),

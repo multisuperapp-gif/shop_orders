@@ -19,6 +19,9 @@ public record ShopOrderData(
         BigDecimal totalOrderValue,
         String addressLabel,
         String addressLine,
+        BigDecimal deliveryLatitude,
+        BigDecimal deliveryLongitude,
+        String cancelReason,
         List<ShopOrderItemData> items
 ) {
 }

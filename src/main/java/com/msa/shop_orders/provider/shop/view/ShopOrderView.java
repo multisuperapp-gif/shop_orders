@@ -38,6 +38,8 @@ public class ShopOrderView {
     private String fulfillmentType;
     private String addressLabel;
     private String addressLine;
+    private BigDecimal deliveryLatitude;
+    private BigDecimal deliveryLongitude;
     private boolean refundPresent;
     private String latestRefundStatus;
     private Refund refund;
