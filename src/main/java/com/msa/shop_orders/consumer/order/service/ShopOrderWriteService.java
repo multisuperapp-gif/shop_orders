@@ -215,6 +215,8 @@ public class ShopOrderWriteService {
                 command.addressLabel(),
                 command.addressLine(),
                 command.paymentCode(),
+                document.getCustomerName(),
+                document.getCustomerPhone(),
                 createdItems
         );
     }
@@ -538,6 +540,8 @@ public class ShopOrderWriteService {
             String addressLabel,
             String addressLine,
             String paymentCode,
+            String customerName,
+            String customerPhone,
             List<CreatedOrderItem> items
     ) {
     }

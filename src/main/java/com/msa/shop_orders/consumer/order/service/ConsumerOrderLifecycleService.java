@@ -55,10 +55,14 @@ public class ConsumerOrderLifecycleService {
         // shop's 3s incoming-order poll then drops it from the live list/ring.
         if (!paid && ("PENDING_ACCEPTANCE".equals(status) || "ACCEPTED".equals(status))) {
             internalFinanceOrderSyncService.releaseInventory(orderId);
+            // User cancel BEFORE the shop accepts is treated as a rejection
+            // (REJECTED → hidden from customer + shop, admin-only). After the shop
+            // has accepted it is a genuine customer cancellation (CANCELLED).
+            String terminalStatus = "PENDING_ACCEPTANCE".equals(status) ? "REJECTED" : "CANCELLED";
             shopOrderStateWriteService.applyStateUpdate(
                     orderId,
                     new ShopOrderStateWriteService.OrderStateMutation(
-                            "CANCELLED",
+                            terminalStatus,
                             "FAILED",
                             userId,
                             reason == null || reason.isBlank() ? "Cancelled by the customer." : reason,

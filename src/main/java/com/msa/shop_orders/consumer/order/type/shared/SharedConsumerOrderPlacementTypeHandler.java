@@ -204,6 +204,11 @@ public class SharedConsumerOrderPlacementTypeHandler implements ConsumerOrderPla
         document.setUpdatedAt(now);
         document.setAddressLabel(order.addressLabel());
         document.setAddressLine(order.addressLine());
+        // Customer recipient name + phone so the shop's order card shows them
+        // (and the shop can call) — without these the Mongo view was empty and the
+        // app fell back to the item name.
+        document.setCustomerName(order.customerName());
+        document.setCustomerPhone(order.customerPhone());
         document.setItemCount(order.items() == null ? 0 : order.items().stream()
                 .map(ShopOrderWriteService.CreatedOrderItem::quantity)
                 .filter(Objects::nonNull)
