@@ -22,6 +22,7 @@ public record ShopOrderData(
         BigDecimal deliveryLatitude,
         BigDecimal deliveryLongitude,
         String cancelReason,
+        String cancelledBy,
         List<ShopOrderItemData> items
 ) {
 }

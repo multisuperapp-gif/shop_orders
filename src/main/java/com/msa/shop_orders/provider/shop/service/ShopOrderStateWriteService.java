@@ -56,6 +56,10 @@ public class ShopOrderStateWriteService {
             List<ShopOrderView.TimelineEvent> timeline = new ArrayList<>(order.getTimeline() == null ? List.of() : order.getTimeline());
             timeline.add(history);
             order.setTimeline(timeline);
+            if (("CANCELLED".equals(requestedStatus) || "REJECTED".equals(requestedStatus))
+                    && mutation.cancelledBy() != null && !mutation.cancelledBy().isBlank()) {
+                order.setCancelledBy(mutation.cancelledBy().trim().toUpperCase());
+            }
         }
         shopOrderViewRepository.save(order);
         return order;
@@ -66,7 +70,19 @@ public class ShopOrderStateWriteService {
             String paymentStatus,
             Long changedByUserId,
             String reason,
-            String refundPolicyApplied
+            String refundPolicyApplied,
+            String cancelledBy
     ) {
+        // Backwards-compatible constructor for callers that do not record the
+        // cancelling actor (e.g. payment-status-only mutations).
+        public OrderStateMutation(
+                String orderStatus,
+                String paymentStatus,
+                Long changedByUserId,
+                String reason,
+                String refundPolicyApplied
+        ) {
+            this(orderStatus, paymentStatus, changedByUserId, reason, refundPolicyApplied, null);
+        }
     }
 }

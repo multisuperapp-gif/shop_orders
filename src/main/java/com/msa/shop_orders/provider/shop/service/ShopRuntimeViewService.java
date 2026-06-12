@@ -340,6 +340,7 @@ public class ShopRuntimeViewService {
                 document.getDeliveryLatitude(),
                 document.getDeliveryLongitude(),
                 resolveCancelReason(document),
+                document.getCancelledBy(),
                 Optional.ofNullable(document.getItems()).orElse(List.of()).stream()
                         .map(item -> new ShopOrderItemData(
                                 item.getItemName(),

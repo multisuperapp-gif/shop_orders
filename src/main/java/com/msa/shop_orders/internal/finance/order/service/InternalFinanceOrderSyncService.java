@@ -203,8 +203,16 @@ public class InternalFinanceOrderSyncService {
         if (request == null) {
             return;
         }
-        if (shopOrderViewRepository.findById(orderId).isEmpty()) {
-            throw new BusinessException("ORDER_NOT_FOUND", "Order not found.", HttpStatus.NOT_FOUND);
+        ShopOrderView existing = shopOrderViewRepository.findById(orderId)
+                .orElseThrow(() -> new BusinessException("ORDER_NOT_FOUND", "Order not found.", HttpStatus.NOT_FOUND));
+        // Booking-payment routed cancels don't carry the actor explicitly —
+        // derive it: the customer cancelling matches the order's userId, any
+        // other user id is the shop owner.
+        String newStatus = request.orderStatus() == null ? "" : request.orderStatus().trim().toUpperCase();
+        String cancelledBy = null;
+        if (("CANCELLED".equals(newStatus) || "REJECTED".equals(newStatus))
+                && request.changedByUserId() != null) {
+            cancelledBy = request.changedByUserId().equals(existing.getUserId()) ? "CUSTOMER" : "SHOP";
         }
         shopOrderStateWriteService.applyStateUpdate(
                 orderId,
@@ -213,7 +221,8 @@ public class InternalFinanceOrderSyncService {
                         request.paymentStatus(),
                         request.changedByUserId(),
                         request.reason(),
-                        request.refundPolicyApplied()
+                        request.refundPolicyApplied(),
+                        cancelledBy
                 )
         );
     }

@@ -27,6 +27,14 @@ public record ConsumerOrderDetailData(
         LocalDateTime updatedAt,
         List<ConsumerOrderItemData> items,
         List<ConsumerOrderTimelineEventData> timeline,
-        ConsumerRefundSummaryData refund
+        ConsumerRefundSummaryData refund,
+        String cancelledBy,
+        // Delivery destination (the customer's address) for the tracking map.
+        BigDecimal deliveryLatitude,
+        BigDecimal deliveryLongitude,
+        // Live delivery-agent position while OUT_FOR_DELIVERY (null otherwise).
+        BigDecimal deliveryAgentLatitude,
+        BigDecimal deliveryAgentLongitude,
+        LocalDateTime deliveryAgentLocationAt
 ) {
 }

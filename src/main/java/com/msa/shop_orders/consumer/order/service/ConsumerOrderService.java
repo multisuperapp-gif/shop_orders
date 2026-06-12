@@ -97,8 +97,21 @@ public class ConsumerOrderService {
                 document.getTimeline() == null ? List.of() : document.getTimeline().stream()
                         .map(this::toTimelineData)
                         .toList(),
-                toRefundData(document.getRefund())
+                toRefundData(document.getRefund()),
+                document.getCancelledBy(),
+                document.getDeliveryLatitude(),
+                document.getDeliveryLongitude(),
+                // Only expose the agent position while the order is actually out
+                // for delivery — stale coordinates are meaningless afterwards.
+                isOutForDelivery(document) ? document.getDeliveryAgentLatitude() : null,
+                isOutForDelivery(document) ? document.getDeliveryAgentLongitude() : null,
+                isOutForDelivery(document) ? document.getDeliveryAgentLocationAt() : null
         );
+    }
+
+    private boolean isOutForDelivery(ShopOrderView document) {
+        String status = document.getOrderStatus() == null ? "" : document.getOrderStatus().trim().toUpperCase();
+        return "OUT_FOR_DELIVERY".equals(status) || "DISPATCHED".equals(status);
     }
 
     private ConsumerOrderItemData toItemData(ShopOrderView.Item item) {

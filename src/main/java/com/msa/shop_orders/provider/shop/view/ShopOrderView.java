@@ -55,6 +55,14 @@ public class ShopOrderView {
     private BigDecimal totalOrderValue;
     private String currencyCode;
     private Boolean cancellable;
+    // Who cancelled / rejected a terminal order: CUSTOMER, SHOP, or SYSTEM
+    // (payment-window timeout). Null for non-cancelled orders.
+    private String cancelledBy;
+    // Live position of the shop's delivery agent while the order is
+    // OUT_FOR_DELIVERY — synced from the business app, read by the customer app.
+    private BigDecimal deliveryAgentLatitude;
+    private BigDecimal deliveryAgentLongitude;
+    private LocalDateTime deliveryAgentLocationAt;
     private List<Item> items;
     private List<TimelineEvent> timeline;
 

@@ -80,7 +80,8 @@ public class SharedProviderShopOrderTypeHandler implements ProviderShopOrderType
                                 "FAILED",
                                 changedByUserId,
                                 blankToNull(request.reason()),
-                                null
+                                null,
+                                "SHOP"
                         )
                 );
                 notifyOrderEvent("ORDER_REJECTED", existing, blankToNull(request.reason()));

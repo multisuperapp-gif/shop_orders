@@ -2,6 +2,7 @@ package com.msa.shop_orders.provider.shop.controller;
 
 import com.msa.shop_orders.common.api.ApiResponse;
 import com.msa.shop_orders.provider.shop.dto.ShopOrderData;
+import com.msa.shop_orders.provider.shop.dto.ShopOrderDeliveryLocationRequest;
 import com.msa.shop_orders.provider.shop.dto.ShopOrderStatusUpdateRequest;
 import com.msa.shop_orders.provider.shop.service.ShopOrderService;
 import jakarta.validation.Valid;
@@ -9,6 +10,7 @@ import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -42,5 +44,16 @@ public class ShopOrderController {
             @Valid @RequestBody ShopOrderStatusUpdateRequest request
     ) {
         return ApiResponse.success("Shop order status updated successfully.", shopOrderService.updateOrderStatus(orderId, request));
+    }
+
+    // Live delivery tracking: streamed from the business app while the order is
+    // out for delivery so the customer can follow the delivery on the map.
+    @PutMapping("/{orderId}/delivery-location")
+    public ApiResponse<Void> syncDeliveryLocation(
+            @PathVariable Long orderId,
+            @Valid @RequestBody ShopOrderDeliveryLocationRequest request
+    ) {
+        shopOrderService.syncDeliveryAgentLocation(orderId, request);
+        return ApiResponse.success("Delivery location updated.");
     }
 }

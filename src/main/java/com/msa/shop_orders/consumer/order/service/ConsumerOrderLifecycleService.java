@@ -66,7 +66,8 @@ public class ConsumerOrderLifecycleService {
                             "FAILED",
                             userId,
                             reason == null || reason.isBlank() ? "Cancelled by the customer." : reason,
-                            null
+                            null,
+                            "CUSTOMER"
                     )
             );
             return;
