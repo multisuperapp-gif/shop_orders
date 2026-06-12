@@ -9,6 +9,8 @@ import com.msa.shop_orders.consumer.order.dto.ConsumerOrderSummaryData;
 import com.msa.shop_orders.provider.shop.view.ShopOrderView;
 import com.msa.shop_orders.provider.shop.service.ShopRuntimeViewService;
 import com.msa.shop_orders.security.CurrentUserService;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -65,7 +67,8 @@ public class ConsumerOrderService {
                 document.isRefundPresent(),
                 document.getLatestRefundStatus(),
                 document.getCreatedAt(),
-                document.getUpdatedAt()
+                document.getUpdatedAt(),
+                paymentSecondsRemaining(document)
         );
     }
 
@@ -105,8 +108,41 @@ public class ConsumerOrderService {
                 // for delivery — stale coordinates are meaningless afterwards.
                 isOutForDelivery(document) ? document.getDeliveryAgentLatitude() : null,
                 isOutForDelivery(document) ? document.getDeliveryAgentLongitude() : null,
-                isOutForDelivery(document) ? document.getDeliveryAgentLocationAt() : null
+                isOutForDelivery(document) ? document.getDeliveryAgentLocationAt() : null,
+                paymentSecondsRemaining(document)
         );
+    }
+
+    // Accept-first 5-minute payment window, anchored to the moment the shop
+    // accepted (the ACCEPTED timeline event). Returned to the apps so the
+    // countdown never restarts when the page is reopened.
+    private static final long PAYMENT_WINDOW_SECONDS = 5 * 60;
+
+    private Long paymentSecondsRemaining(ShopOrderView document) {
+        String status = document.getOrderStatus() == null ? "" : document.getOrderStatus().trim().toUpperCase();
+        if (!"ACCEPTED".equals(status) && !"PAYMENT_PENDING".equals(status)) {
+            return null;
+        }
+        if ("PAID".equalsIgnoreCase(document.getPaymentStatus() == null ? "" : document.getPaymentStatus().trim())) {
+            return null;
+        }
+        LocalDateTime acceptedAt = null;
+        if (document.getTimeline() != null) {
+            for (ShopOrderView.TimelineEvent event : document.getTimeline()) {
+                String newStatus = event.getNewStatus() == null ? "" : event.getNewStatus().trim().toUpperCase();
+                if ("ACCEPTED".equals(newStatus) && event.getChangedAt() != null) {
+                    acceptedAt = event.getChangedAt();
+                }
+            }
+        }
+        if (acceptedAt == null) {
+            acceptedAt = document.getUpdatedAt();
+        }
+        if (acceptedAt == null) {
+            return PAYMENT_WINDOW_SECONDS;
+        }
+        long elapsed = Duration.between(acceptedAt, LocalDateTime.now()).getSeconds();
+        return Math.max(0L, PAYMENT_WINDOW_SECONDS - elapsed);
     }
 
     private boolean isOutForDelivery(ShopOrderView document) {

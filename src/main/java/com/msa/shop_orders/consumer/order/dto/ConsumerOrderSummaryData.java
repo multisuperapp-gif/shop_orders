@@ -19,6 +19,10 @@ public record ConsumerOrderSummaryData(
         boolean refundPresent,
         String latestRefundStatus,
         LocalDateTime createdAt,
-        LocalDateTime updatedAt
+        LocalDateTime updatedAt,
+        // Seconds left in the 5-minute payment window (only for unpaid
+        // ACCEPTED / PAYMENT_PENDING orders; null otherwise). Computed
+        // server-side so the apps never restart the countdown.
+        Long paymentSecondsRemaining
 ) {
 }

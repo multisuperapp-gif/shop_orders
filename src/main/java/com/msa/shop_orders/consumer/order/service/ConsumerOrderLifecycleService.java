@@ -47,13 +47,17 @@ public class ConsumerOrderLifecycleService {
         String status = order.getOrderStatus() == null ? "" : order.getOrderStatus().trim().toUpperCase();
         boolean paid = "PAID".equalsIgnoreCase(
                 order.getPaymentStatus() == null ? "" : order.getPaymentStatus().trim());
-        // Accept-first: an unpaid order (awaiting acceptance, or accepted but not
-        // yet paid) has no payment to refund and booking-payment has no finance
-        // context for it — routing it there fails (404) and leaves the order stuck
-        // as PENDING_ACCEPTANCE, so it keeps showing/ringing in the shop app.
+        // Accept-first: an unpaid order (awaiting acceptance, accepted but not
+        // yet paid, or payment started but never completed) has no payment to
+        // refund and booking-payment has no finance context for it — routing it
+        // there fails (404) and leaves the order stuck, so it keeps
+        // showing/ringing in the shop app and the customer cannot cancel.
         // Cancel locally instead: release the reserved stock + mark CANCELLED. The
         // shop's 3s incoming-order poll then drops it from the live list/ring.
-        if (!paid && ("PENDING_ACCEPTANCE".equals(status) || "ACCEPTED".equals(status))) {
+        if (!paid
+                && ("PENDING_ACCEPTANCE".equals(status)
+                        || "ACCEPTED".equals(status)
+                        || "PAYMENT_PENDING".equals(status))) {
             internalFinanceOrderSyncService.releaseInventory(orderId);
             // User cancel BEFORE the shop accepts is treated as a rejection
             // (REJECTED → hidden from customer + shop, admin-only). After the shop

@@ -35,6 +35,9 @@ public record ConsumerOrderDetailData(
         // Live delivery-agent position while OUT_FOR_DELIVERY (null otherwise).
         BigDecimal deliveryAgentLatitude,
         BigDecimal deliveryAgentLongitude,
-        LocalDateTime deliveryAgentLocationAt
+        LocalDateTime deliveryAgentLocationAt,
+        // Seconds left in the 5-minute payment window (only for unpaid
+        // ACCEPTED / PAYMENT_PENDING orders; null otherwise).
+        Long paymentSecondsRemaining
 ) {
 }
