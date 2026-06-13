@@ -5,6 +5,7 @@ import com.msa.shop_orders.consumer.storefront.dto.StorefrontDtos;
 import com.msa.shop_orders.persistence.repository.StorefrontCatalogRepository;
 import com.msa.shop_orders.provider.shop.service.ShopCategoryViewService;
 import com.msa.shop_orders.provider.shop.service.ShopDeliveryRuleViewService;
+import com.msa.shop_orders.common.settings.ShopFeeSettingsService;
 import com.msa.shop_orders.provider.shop.service.ShopOperatingHoursViewService;
 import com.msa.shop_orders.provider.shop.service.ShopShellViewService;
 import com.msa.shop_orders.provider.shop.view.ShopProductView;
@@ -43,6 +44,8 @@ class StorefrontCatalogServiceTest {
     @Mock
     private ShopOperatingHoursViewService shopOperatingHoursViewService;
     @Mock
+    private ShopFeeSettingsService shopFeeSettingsService;
+    @Mock
     private ObjectMapper objectMapper;
 
     private StorefrontCatalogService service;
@@ -57,6 +60,7 @@ class StorefrontCatalogServiceTest {
                 shopShellViewService,
                 shopDeliveryRuleViewService,
                 shopOperatingHoursViewService,
+                shopFeeSettingsService,
                 objectMapper
         );
     }
