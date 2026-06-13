@@ -1,6 +1,7 @@
 package com.msa.shop_orders.consumer.storefront.service;
 
 import com.msa.shop_orders.common.exception.BusinessException;
+import com.msa.shop_orders.common.settings.ShopFeeSettingsService;
 import com.msa.shop_orders.common.shoptype.RestaurantItemVisibilityPolicy;
 import com.msa.shop_orders.common.shoptype.RestaurantVariantPromotionSupport;
 import com.msa.shop_orders.consumer.storefront.dto.StorefrontDtos;
@@ -51,6 +52,7 @@ public class StorefrontCatalogService {
     private final ShopShellViewService shopShellViewService;
     private final ShopDeliveryRuleViewService shopDeliveryRuleViewService;
     private final ShopOperatingHoursViewService shopOperatingHoursViewService;
+    private final ShopFeeSettingsService shopFeeSettingsService;
     private final ObjectMapper objectMapper;
 
     public StorefrontCatalogService(
@@ -61,6 +63,7 @@ public class StorefrontCatalogService {
             ShopShellViewService shopShellViewService,
             ShopDeliveryRuleViewService shopDeliveryRuleViewService,
             ShopOperatingHoursViewService shopOperatingHoursViewService,
+            ShopFeeSettingsService shopFeeSettingsService,
             ObjectMapper objectMapper
     ) {
         this.storefrontCatalogRepository = storefrontCatalogRepository;
@@ -70,13 +73,15 @@ public class StorefrontCatalogService {
         this.shopShellViewService = shopShellViewService;
         this.shopDeliveryRuleViewService = shopDeliveryRuleViewService;
         this.shopOperatingHoursViewService = shopOperatingHoursViewService;
+        this.shopFeeSettingsService = shopFeeSettingsService;
         this.objectMapper = objectMapper;
     }
 
     public StorefrontDtos.HomeBootstrapData homeBootstrap(Double latitude, Double longitude, int page, int size) {
         return new StorefrontDtos.HomeBootstrapData(
                 findShopTypes(),
-                findProducts(null, null, null, latitude, longitude, page, size)
+                findProducts(null, null, null, latitude, longitude, page, size),
+                shopFeeSettingsService.shopPlatformFeePercent()
         );
     }
 

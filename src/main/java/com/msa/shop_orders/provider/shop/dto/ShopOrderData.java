@@ -26,6 +26,10 @@ public record ShopOrderData(
         // Customer rating (1-5) + comment for delivered orders (null otherwise).
         Integer rating,
         String reviewComment,
-        List<ShopOrderItemData> items
+        List<ShopOrderItemData> items,
+        // Seconds left in the customer's 5-minute payment window (only for
+        // ACCEPTED/PAYMENT_PENDING unpaid orders; null otherwise) so the shop
+        // can show a live countdown.
+        Long paymentSecondsRemaining
 ) {
 }

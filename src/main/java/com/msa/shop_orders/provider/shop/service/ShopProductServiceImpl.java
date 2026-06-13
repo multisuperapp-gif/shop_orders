@@ -86,4 +86,11 @@ public class ShopProductServiceImpl implements ShopProductService {
         ShopShellView shop = shopContextService.currentApprovedShop();
         shopProductWriteService.updateProductAvailability(productId, shop.getShopId(), available);
     }
+
+    @Override
+    @Transactional
+    public void updateVariantAvailability(Long productId, Long variantId, boolean available) {
+        ShopShellView shop = shopContextService.currentApprovedShop();
+        shopProductWriteService.updateVariantAvailability(productId, variantId, shop.getShopId(), available);
+    }
 }

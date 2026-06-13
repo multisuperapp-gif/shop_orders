@@ -9,8 +9,11 @@ import com.msa.shop_orders.consumer.order.dto.ConsumerOrderSummaryData;
 import com.msa.shop_orders.consumer.order.dto.ConsumerOrderReviewRequest;
 import com.msa.shop_orders.provider.shop.view.ShopOrderView;
 import com.msa.shop_orders.provider.shop.view.repository.ShopOrderViewRepository;
+import com.msa.shop_orders.provider.shop.view.repository.ShopShellViewRepository;
 import com.msa.shop_orders.provider.shop.service.ShopRuntimeViewService;
 import com.msa.shop_orders.security.CurrentUserService;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -23,15 +26,18 @@ public class ConsumerOrderService {
     private final CurrentUserService currentUserService;
     private final ShopRuntimeViewService shopRuntimeViewService;
     private final ShopOrderViewRepository shopOrderViewRepository;
+    private final ShopShellViewRepository shopShellViewRepository;
 
     public ConsumerOrderService(
             CurrentUserService currentUserService,
             ShopRuntimeViewService shopRuntimeViewService,
-            ShopOrderViewRepository shopOrderViewRepository
+            ShopOrderViewRepository shopOrderViewRepository,
+            ShopShellViewRepository shopShellViewRepository
     ) {
         this.currentUserService = currentUserService;
         this.shopRuntimeViewService = shopRuntimeViewService;
         this.shopOrderViewRepository = shopOrderViewRepository;
+        this.shopShellViewRepository = shopShellViewRepository;
     }
 
     // Records a customer's 1-5 rating (+ optional comment) for a delivered order.
@@ -63,6 +69,32 @@ public class ConsumerOrderService {
         order.setReviewComment(comment == null || comment.isBlank() ? null : comment.trim());
         order.setReviewedAt(LocalDateTime.now());
         shopOrderViewRepository.save(order);
+        // Roll the new rating into the shop's overall average so the provider
+        // dashboard shows it (previously left at "not rated yet").
+        recomputeShopRating(order.getShopId());
+    }
+
+    // Recomputes a shop's aggregate rating from all its rated orders and writes
+    // it back to the shop view that the dashboard + customer home read.
+    private void recomputeShopRating(Long shopId) {
+        if (shopId == null) {
+            return;
+        }
+        List<Integer> ratings = shopOrderViewRepository.findByShopIdOrderByCreatedAtDesc(shopId).stream()
+                .map(ShopOrderView::getRating)
+                .filter(value -> value != null && value > 0)
+                .toList();
+        shopShellViewRepository.findById(shopId).ifPresent(shop -> {
+            if (ratings.isEmpty()) {
+                shop.setAvgRating(BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP));
+                shop.setTotalReviews(0);
+            } else {
+                double average = ratings.stream().mapToInt(Integer::intValue).average().orElse(0);
+                shop.setAvgRating(BigDecimal.valueOf(average).setScale(2, RoundingMode.HALF_UP));
+                shop.setTotalReviews(ratings.size());
+            }
+            shopShellViewRepository.save(shop);
+        });
     }
 
     public List<ConsumerOrderSummaryData> orders() {

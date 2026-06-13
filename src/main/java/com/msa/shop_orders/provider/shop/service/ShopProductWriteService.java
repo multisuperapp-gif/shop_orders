@@ -88,6 +88,13 @@ public class ShopProductWriteService {
         return reset;
     }
 
+    // Per-variant availability toggle (restaurants): flips a single size/option
+    // in stock / out of stock independently of the others.
+    @Transactional
+    public ProductEntity updateVariantAvailability(Long productId, Long variantId, Long shopId, boolean available) {
+        return updateVariantAvailabilityDocument(productId, variantId, shopId, available);
+    }
+
     // Availability toggle (restaurants): flips the whole item in stock / out of
     // stock via quantityAvailable, leaving the item listed (active) so an
     // out-of-stock item still shows to customers, greyed.
@@ -319,6 +326,33 @@ public class ShopProductWriteService {
                 document.getVariants() == null || document.getVariants().isEmpty()
                         ? resolveInventoryStatus(quantity, document.getReorderLevel(), document.isActive())
                         : resolvePrimaryInventoryStatus(document));
+        document.setUpdatedAt(LocalDateTime.now());
+        shopProductViewRepository.save(document);
+        return toProductEntity(document);
+    }
+
+    private ProductEntity updateVariantAvailabilityDocument(Long productId, Long variantId, Long shopId, boolean available) {
+        ShopProductView document = requireProductDocument(productId);
+        if (shopId != null && !shopId.equals(document.getShopId())) {
+            throw new BusinessException("PRODUCT_NOT_FOUND", "Product not found for this shop.", HttpStatus.NOT_FOUND);
+        }
+        List<ShopProductView.Variant> variants = document.getVariants();
+        ShopProductView.Variant target = variants == null ? null : variants.stream()
+                .filter(variant -> variantId != null && variantId.equals(variant.getVariantId()))
+                .findFirst()
+                .orElse(null);
+        if (target == null) {
+            throw new BusinessException("VARIANT_NOT_FOUND", "Variant not found for this product.", HttpStatus.NOT_FOUND);
+        }
+        int quantity = available ? RESTAURANT_AVAILABLE_STOCK : 0;
+        target.setQuantityAvailable(quantity);
+        target.setInventoryStatus(resolveInventoryStatus(
+                quantity,
+                target.getReorderLevel(),
+                document.isActive() && target.isActive()
+        ));
+        // Recompute the product's headline status from its variants.
+        document.setInventoryStatus(resolvePrimaryInventoryStatus(document));
         document.setUpdatedAt(LocalDateTime.now());
         shopProductViewRepository.save(document);
         return toProductEntity(document);

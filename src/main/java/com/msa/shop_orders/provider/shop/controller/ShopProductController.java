@@ -59,4 +59,17 @@ public class ShopProductController {
         shopProductService.updateProductAvailability(productId, available);
         return ApiResponse.success(available ? "Item marked available." : "Item marked out of stock.");
     }
+
+    // Per-variant availability toggle (restaurants): mark one size/option in
+    // stock / out of stock independently of the others.
+    @PatchMapping("/{productId}/variants/{variantId}/availability")
+    public ApiResponse<Void> updateVariantAvailability(
+            @PathVariable Long productId,
+            @PathVariable Long variantId,
+            @Valid @RequestBody ShopProductAvailabilityUpdateRequest request
+    ) {
+        boolean available = Boolean.TRUE.equals(request.available());
+        shopProductService.updateVariantAvailability(productId, variantId, available);
+        return ApiResponse.success(available ? "Variant marked available." : "Variant marked out of stock.");
+    }
 }

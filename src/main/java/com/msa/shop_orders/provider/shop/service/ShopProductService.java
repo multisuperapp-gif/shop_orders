@@ -13,4 +13,5 @@ public interface ShopProductService {
     ShopProductData duplicateProduct(Long productId);
     ShopProductData updateProductStatus(Long productId, ShopProductStatusUpdateRequest request);
     void updateProductAvailability(Long productId, boolean available);
+    void updateVariantAvailability(Long productId, Long variantId, boolean available);
 }

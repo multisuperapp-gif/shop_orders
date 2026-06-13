@@ -9,7 +9,10 @@ public final class StorefrontDtos {
 
     public record HomeBootstrapData(
             List<ShopTypeData> shopTypes,
-            PageResponse<ShopProductCardData> featuredProducts
+            PageResponse<ShopProductCardData> featuredProducts,
+            // Global shop platform-fee percentage (platform.fee.shop). Exposed
+            // here so guests see the fee in the cart before logging in.
+            BigDecimal shopPlatformFeePercent
     ) {
     }
 
