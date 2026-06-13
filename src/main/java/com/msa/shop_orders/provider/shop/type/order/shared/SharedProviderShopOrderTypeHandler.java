@@ -101,6 +101,11 @@ public class SharedProviderShopOrderTypeHandler implements ProviderShopOrderType
             return shopRuntimeViewService.loadOrder(shop, orderId);
         }
         validateLocalTransition(oldStatus, newStatus);
+        // Delivery is OTP-gated: the customer reads out the code shown in their
+        // app and the shop types it in here to confirm the hand-off.
+        if ("DELIVERED".equals(newStatus)) {
+            verifyCompletionOtp(existing, request.completionOtp());
+        }
         ShopOrderView orderView = shopOrderStateWriteService.applyStateUpdate(
                 orderId,
                 new ShopOrderStateWriteService.OrderStateMutation(
@@ -111,6 +116,13 @@ public class SharedProviderShopOrderTypeHandler implements ProviderShopOrderType
                         null
                 )
         );
+        // Issue the completion OTP the moment the order goes out for delivery,
+        // so the customer can see it; clear it once the order is delivered.
+        if ("OUT_FOR_DELIVERY".equals(newStatus)) {
+            assignCompletionOtp(orderId);
+        } else if ("DELIVERED".equals(newStatus)) {
+            clearCompletionOtp(orderId);
+        }
         ShopOrderView notifyTarget = orderView != null ? orderView : existing;
         if ("ACCEPTED".equals(newStatus) && "PENDING_ACCEPTANCE".equals(oldStatus)) {
             // Accept-first: opens the customer's 5-minute payment window. The
@@ -163,6 +175,47 @@ public class SharedProviderShopOrderTypeHandler implements ProviderShopOrderType
         return shopOrderViewRepository.findById(orderId)
                 .filter(order -> shop.getShopId().equals(order.getShopId()))
                 .orElseThrow(() -> new BusinessException("ORDER_NOT_FOUND", "Order not found for this shop.", HttpStatus.NOT_FOUND));
+    }
+
+    private static final java.security.SecureRandom OTP_RANDOM = new java.security.SecureRandom();
+
+    private void assignCompletionOtp(Long orderId) {
+        shopOrderViewRepository.findById(orderId).ifPresent(order -> {
+            // Don't churn the code if one was already issued for this delivery.
+            if (order.getDeliveryOtp() == null || order.getDeliveryOtp().isBlank()) {
+                order.setDeliveryOtp(generateCompletionOtp());
+                shopOrderViewRepository.save(order);
+            }
+        });
+    }
+
+    private void clearCompletionOtp(Long orderId) {
+        shopOrderViewRepository.findById(orderId).ifPresent(order -> {
+            if (order.getDeliveryOtp() != null) {
+                order.setDeliveryOtp(null);
+                shopOrderViewRepository.save(order);
+            }
+        });
+    }
+
+    private void verifyCompletionOtp(ShopOrderView order, String provided) {
+        String expected = order.getDeliveryOtp();
+        if (expected == null || expected.isBlank()) {
+            throw new BusinessException(
+                    "DELIVERY_OTP_UNAVAILABLE",
+                    "Delivery OTP is not ready yet. Ask the customer to reopen the order, then try again.",
+                    HttpStatus.BAD_REQUEST);
+        }
+        if (provided == null || !expected.trim().equals(provided.trim())) {
+            throw new BusinessException(
+                    "INVALID_DELIVERY_OTP",
+                    "Incorrect delivery OTP. Please check the code with the customer.",
+                    HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    private String generateCompletionOtp() {
+        return String.format(Locale.ROOT, "%04d", OTP_RANDOM.nextInt(10000));
     }
 
     private void validateLocalTransition(String currentStatus, String newStatus) {

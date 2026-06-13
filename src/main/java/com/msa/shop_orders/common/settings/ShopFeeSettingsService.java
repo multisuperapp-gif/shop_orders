@@ -13,6 +13,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class ShopFeeSettingsService {
     private static final String PLATFORM_FEE_SHOP = "platform.fee.shop";
+    private static final String COMMISSION_FEE_SHOP = "commission.fee.shop";
 
     private final AppSettingRepository appSettingRepository;
 
@@ -25,6 +26,31 @@ public class ShopFeeSettingsService {
         return appSettingRepository.findBySettingKey(PLATFORM_FEE_SHOP)
                 .map(setting -> parseAmount(setting.getSettingValue()))
                 .orElse(BigDecimal.ZERO);
+    }
+
+    /** Platform commission percentage charged to the shop on the item subtotal. */
+    public BigDecimal shopCommissionPercent() {
+        return appSettingRepository.findBySettingKey(COMMISSION_FEE_SHOP)
+                .map(setting -> parseAmount(setting.getSettingValue()))
+                .orElse(BigDecimal.ZERO);
+    }
+
+    /**
+     * Shop's net earning for an order's item subtotal: subtotal minus the
+     * platform commission. (Platform fee + delivery are not the shop's.)
+     */
+    public BigDecimal shopNetEarning(BigDecimal subtotal) {
+        if (subtotal == null || subtotal.signum() <= 0) {
+            return BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP);
+        }
+        BigDecimal percent = shopCommissionPercent();
+        if (percent.signum() <= 0) {
+            return subtotal.setScale(2, RoundingMode.HALF_UP);
+        }
+        BigDecimal commission = subtotal
+                .multiply(percent)
+                .divide(new BigDecimal("100"), 2, RoundingMode.HALF_UP);
+        return subtotal.subtract(commission).max(BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
     }
 
     /** Platform fee amount for the given subtotal, rounded to 2 decimals. */

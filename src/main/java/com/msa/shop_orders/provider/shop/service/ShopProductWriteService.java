@@ -67,6 +67,27 @@ public class ShopProductWriteService {
         return updateProductStatusDocument(productId, active);
     }
 
+    // Daily fresh-start reset (restaurants): marks every listed item (and its
+    // variants) back to available, so yesterday's "out of stock for today"
+    // items return to the menu each morning — like Swiggy/Zomato. Disabled
+    // items (active = false) stay hidden. Returns the count of items reset.
+    @Transactional
+    public int resetAvailabilityForShop(Long shopId) {
+        if (shopId == null) {
+            return 0;
+        }
+        List<ShopProductView> products = shopProductViewRepository.findByShopIdOrderByUpdatedAtDesc(shopId);
+        int reset = 0;
+        for (ShopProductView product : products) {
+            if (!product.isActive()) {
+                continue;
+            }
+            updateProductAvailabilityDocument(product.getProductId(), shopId, true);
+            reset++;
+        }
+        return reset;
+    }
+
     // Availability toggle (restaurants): flips the whole item in stock / out of
     // stock via quantityAvailable, leaving the item listed (active) so an
     // out-of-stock item still shows to customers, greyed.

@@ -9,6 +9,10 @@ public record ShopDashboardMetricData(
         // Gross value of every order in the period (kept for reference).
         BigDecimal orderValue,
         // Actual earnings: paid orders that were not cancelled/rejected.
-        BigDecimal earnings
+        BigDecimal earnings,
+        // Missed = declined (shop rejected) + not-accepted (auto-rejected)
+        // orders: their count and the order value the shop missed out on.
+        long missedOrders,
+        BigDecimal missedValue
 ) {
 }

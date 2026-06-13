@@ -99,4 +99,64 @@ public class ShopOrderPaymentTimeoutScheduler {
             // Best-effort push.
         }
     }
+
+    // Paid orders still open (ACCEPTED / PREPARING / DISPATCHED / OUT_FOR_DELIVERY)
+    // that the shop never marked delivered. Same as labour/service: any such order
+    // from a prior day is auto-marked DELIVERED once its day has ended (midnight).
+    private static final List<String> AUTO_DELIVER_STATUSES =
+            List.of("ACCEPTED", "PREPARING", "DISPATCHED", "OUT_FOR_DELIVERY");
+
+    // Runs every 5 minutes. After midnight (shop zone) it sweeps the prior day's
+    // unfinished paid orders and closes them out as delivered.
+    @Scheduled(fixedDelay = 300_000L, initialDelay = 120_000L)
+    public void autoDeliverOrdersAtEndOfDay() {
+        LocalDateTime startOfToday = LocalDateTime.now(SHOP_ZONE).toLocalDate().atStartOfDay();
+        List<ShopOrderView> openOrders;
+        try {
+            openOrders = shopOrderViewRepository.findByOrderStatusInAndCreatedAtBefore(
+                    AUTO_DELIVER_STATUSES, startOfToday);
+        } catch (Exception exception) {
+            log.warn("Failed to query orders for end-of-day auto-delivery", exception);
+            return;
+        }
+        for (ShopOrderView order : openOrders) {
+            // Only close out orders the customer actually paid for.
+            String payment = order.getPaymentStatus() == null ? "" : order.getPaymentStatus().trim().toUpperCase();
+            boolean paid = "PAID".equals(payment) || "PAYMENT_COMPLETED".equals(payment) || "COMPLETED".equals(payment);
+            if (!paid) {
+                continue;
+            }
+            try {
+                shopOrderStateWriteService.applyStateUpdate(
+                        order.getOrderId(),
+                        new ShopOrderStateWriteService.OrderStateMutation(
+                                "DELIVERED",
+                                null,
+                                null,
+                                "Auto-marked delivered — order was not closed by end of day.",
+                                null,
+                                "SYSTEM"
+                        )
+                );
+                notifyAutoDelivered(order);
+            } catch (Exception exception) {
+                log.warn("Failed to auto-deliver shop order {}", order.getOrderId(), exception);
+            }
+        }
+    }
+
+    private void notifyAutoDelivered(ShopOrderView order) {
+        try {
+            bookingPaymentOrderClient.notifyOrderEvent(new NotifyShopOrderEventRequest(
+                    "ORDER_STATUS",
+                    order.getShopId(),
+                    order.getUserId(),
+                    order.getOrderId(),
+                    order.getOrderCode(),
+                    "Your order is now delivered."
+            ));
+        } catch (Exception ignored) {
+            // Best-effort push.
+        }
+    }
 }

@@ -66,6 +66,10 @@ public class ShopOrderView {
     private BigDecimal deliveryAgentLatitude;
     private BigDecimal deliveryAgentLongitude;
     private LocalDateTime deliveryAgentLocationAt;
+    // Delivery completion OTP: generated when the order goes OUT_FOR_DELIVERY,
+    // shown to the customer, and entered by the shop to mark it delivered.
+    // Cleared once the order is delivered.
+    private String deliveryOtp;
     // Customer rating (1-5) + optional comment, set once after delivery.
     private Integer rating;
     private String reviewComment;

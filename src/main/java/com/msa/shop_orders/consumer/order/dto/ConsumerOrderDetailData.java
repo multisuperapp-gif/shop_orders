@@ -40,6 +40,9 @@ public record ConsumerOrderDetailData(
         // Seconds left in the 5-minute payment window (only for unpaid
         // ACCEPTED / PAYMENT_PENDING orders; null otherwise).
         Long paymentSecondsRemaining,
+        // Delivery completion OTP the customer reads out to the delivery agent.
+        // Only present while the order is OUT_FOR_DELIVERY (null otherwise).
+        String completionOtp,
         // Customer rating (1-5) + comment, null until the order is reviewed.
         Integer reviewRating,
         String reviewComment

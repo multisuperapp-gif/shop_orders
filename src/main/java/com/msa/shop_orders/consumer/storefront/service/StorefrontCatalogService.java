@@ -749,9 +749,12 @@ public class StorefrontCatalogService {
     }
 
     private boolean resolveOutOfStock(ShopProductView product) {
-        ShopProductView.Variant variant = resolvePrimaryVariant(product);
-        if (variant != null) {
-            return isVariantOutOfStock(variant);
+        List<ShopProductView.Variant> variants = product.getVariants();
+        if (variants != null && !variants.isEmpty()) {
+            // A multi-size item is "out of stock" on the menu card only when
+            // EVERY variant is out — if any size is available the item stays
+            // orderable (per-variant out-of-stock is shown on the detail page).
+            return variants.stream().allMatch(this::isVariantOutOfStock);
         }
         return isOutOfStock(defaultString(product.getInventoryStatus(), "OUT_OF_STOCK"), product.getQuantityAvailable(), product.getReservedQuantity());
     }

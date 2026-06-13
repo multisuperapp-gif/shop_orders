@@ -40,19 +40,22 @@ public class ShopRuntimeViewService {
     private final ShopProductViewRepository shopProductViewRepository;
     private final ShopOrderViewRepository shopOrderViewRepository;
     private final ShopShellViewRepository shopShellViewRepository;
+    private final com.msa.shop_orders.common.settings.ShopFeeSettingsService shopFeeSettingsService;
 
     public ShopRuntimeViewService(
             ShopCategoryViewService shopCategoryViewService,
             ShopDeliveryRuleViewService shopDeliveryRuleViewService,
             ShopProductViewRepository shopProductViewRepository,
             ShopOrderViewRepository shopOrderViewRepository,
-            ShopShellViewRepository shopShellViewRepository
+            ShopShellViewRepository shopShellViewRepository,
+            com.msa.shop_orders.common.settings.ShopFeeSettingsService shopFeeSettingsService
     ) {
         this.shopCategoryViewService = shopCategoryViewService;
         this.shopDeliveryRuleViewService = shopDeliveryRuleViewService;
         this.shopProductViewRepository = shopProductViewRepository;
         this.shopOrderViewRepository = shopOrderViewRepository;
         this.shopShellViewRepository = shopShellViewRepository;
+        this.shopFeeSettingsService = shopFeeSettingsService;
     }
 
     public void syncProductsForShop(ShopShellView shopEntity) {
@@ -131,11 +134,10 @@ public class ShopRuntimeViewService {
     }
 
     public ShopDashboardSummaryData loadSummary(ShopShellView shopEntity) {
+        // Includes REJECTED orders — metric() separates them out as "missed"
+        // (declined + not-accepted) so they don't inflate the real-order counts
+        // but are still reported as count + value the shop missed.
         List<ShopOrderData> orders = shopOrderViewRepository.findByShopIdOrderByCreatedAtDesc(shopEntity.getShopId()).stream()
-                // A rejected order (shop rejected, or customer cancelled before
-                // acceptance) does not count as an order — exclude from all
-                // dashboard metrics.
-                .filter(order -> !"REJECTED".equalsIgnoreCase(order.getOrderStatus()))
                 .map(this::toShopOrderData)
                 .toList();
         LocalDateTime todayStart = LocalDate.now().atStartOfDay();
@@ -391,20 +393,36 @@ public class ShopRuntimeViewService {
         List<ShopOrderData> filtered = start == null ? orders : orders.stream()
                 .filter(order -> order.createdAt() != null && !order.createdAt().isBefore(start))
                 .toList();
-        long completed = filtered.stream().filter(order -> "DELIVERED".equalsIgnoreCase(order.orderStatus())).count();
-        long cancelled = filtered.stream().filter(order -> "CANCELLED".equalsIgnoreCase(order.orderStatus())).count();
-        BigDecimal orderValue = filtered.stream()
+        // Missed = declined (shop rejected) + not-accepted (auto-rejected on the
+        // payment/no-accept timeout) — both land in REJECTED. They are not real
+        // orders, so they're excluded from the order/completed/cancelled counts
+        // and reported separately as the value the shop missed out on.
+        List<ShopOrderData> missed = filtered.stream()
+                .filter(order -> "REJECTED".equalsIgnoreCase(order.orderStatus()))
+                .toList();
+        List<ShopOrderData> realOrders = filtered.stream()
+                .filter(order -> !"REJECTED".equalsIgnoreCase(order.orderStatus()))
+                .toList();
+        long completed = realOrders.stream().filter(order -> "DELIVERED".equalsIgnoreCase(order.orderStatus())).count();
+        long cancelled = realOrders.stream().filter(order -> "CANCELLED".equalsIgnoreCase(order.orderStatus())).count();
+        BigDecimal orderValue = realOrders.stream()
                 .map(ShopOrderData::totalOrderValue)
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        // Earnings count only paid orders that weren't cancelled/rejected — the
-        // money the shop actually made (excludes pending/unpaid + cancelled).
-        BigDecimal earnings = filtered.stream()
+        // Earnings = the shop's NET take on paid, non-cancelled orders only:
+        // item subtotal minus the platform commission (platform fee + delivery
+        // are not the shop's). Excludes pending/unpaid and cancelled orders.
+        BigDecimal earnings = realOrders.stream()
                 .filter(this::isEarningOrder)
+                .map(order -> shopFeeSettingsService.shopNetEarning(order.itemsTotal()))
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal missedValue = missed.stream()
                 .map(ShopOrderData::totalOrderValue)
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        return new ShopDashboardMetricData(filtered.size(), completed, cancelled, orderValue, earnings);
+        return new ShopDashboardMetricData(
+                realOrders.size(), completed, cancelled, orderValue, earnings, missed.size(), missedValue);
     }
 
     // An order contributes to earnings only when it has been paid and is not in
