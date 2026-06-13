@@ -67,6 +67,14 @@ public class ShopProductWriteService {
         return updateProductStatusDocument(productId, active);
     }
 
+    // Availability toggle (restaurants): flips the whole item in stock / out of
+    // stock via quantityAvailable, leaving the item listed (active) so an
+    // out-of-stock item still shows to customers, greyed.
+    @Transactional
+    public ProductEntity updateProductAvailability(Long productId, Long shopId, boolean available) {
+        return updateProductAvailabilityDocument(productId, shopId, available);
+    }
+
     @Transactional
     public ProductEntity updateProductFeatured(Long productId, boolean featured) {
         return updateProductFeaturedDocument(productId, featured);
@@ -263,6 +271,36 @@ public class ShopProductWriteService {
         duplicate.setUpdatedAt(LocalDateTime.now());
         shopProductViewRepository.save(duplicate);
         return toProductEntity(duplicate);
+    }
+
+    // Effectively-unlimited stock used to represent "available" for restaurant
+    // items (which don't track real counts — see business app).
+    private static final int RESTAURANT_AVAILABLE_STOCK = 100000;
+
+    private ProductEntity updateProductAvailabilityDocument(Long productId, Long shopId, boolean available) {
+        ShopProductView document = requireProductDocument(productId);
+        if (shopId != null && !shopId.equals(document.getShopId())) {
+            throw new BusinessException("PRODUCT_NOT_FOUND", "Product not found for this shop.", HttpStatus.NOT_FOUND);
+        }
+        int quantity = available ? RESTAURANT_AVAILABLE_STOCK : 0;
+        document.setQuantityAvailable(quantity);
+        if (document.getVariants() != null) {
+            document.getVariants().forEach(variant -> {
+                variant.setQuantityAvailable(quantity);
+                variant.setInventoryStatus(resolveInventoryStatus(
+                        quantity,
+                        variant.getReorderLevel(),
+                        document.isActive() && variant.isActive()
+                ));
+            });
+        }
+        document.setInventoryStatus(
+                document.getVariants() == null || document.getVariants().isEmpty()
+                        ? resolveInventoryStatus(quantity, document.getReorderLevel(), document.isActive())
+                        : resolvePrimaryInventoryStatus(document));
+        document.setUpdatedAt(LocalDateTime.now());
+        shopProductViewRepository.save(document);
+        return toProductEntity(document);
     }
 
     private ProductEntity updateProductStatusDocument(Long productId, boolean active) {

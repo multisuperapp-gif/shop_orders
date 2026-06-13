@@ -23,6 +23,9 @@ public record ShopOrderData(
         BigDecimal deliveryLongitude,
         String cancelReason,
         String cancelledBy,
+        // Customer rating (1-5) + comment for delivered orders (null otherwise).
+        Integer rating,
+        String reviewComment,
         List<ShopOrderItemData> items
 ) {
 }

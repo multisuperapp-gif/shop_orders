@@ -158,6 +158,15 @@ public class ShopOrderWriteService {
         document.setUserId(command.userId());
         document.setOrderCode(generateOrderCode());
         document.setShopName(shop == null || shop.getShopName() == null || shop.getShopName().isBlank() ? "Shop" : shop.getShopName());
+        // Capture the shop owner's phone so the customer can call the restaurant
+        // about a live order.
+        if (shop != null && shop.getOwnerUserId() != null) {
+            document.setShopPhone(
+                    userRepository.findById(shop.getOwnerUserId())
+                            .map(com.msa.shop_orders.persistence.entity.UserEntity::getPhone)
+                            .orElse(null)
+            );
+        }
         // Capture the customer's phone so the shop's order card can show + call it.
         document.setCustomerPhone(
                 userRepository.findById(command.userId())

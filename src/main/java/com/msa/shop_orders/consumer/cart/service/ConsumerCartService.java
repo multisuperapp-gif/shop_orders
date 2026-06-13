@@ -232,6 +232,18 @@ public class ConsumerCartService {
         consumerCartViewRepository.deleteById(userId);
     }
 
+    // Clears a specific customer's cart, regardless of who is calling. Used when
+    // the shop ACCEPTS an order: the cart is kept intact while the order is
+    // pending acceptance (so a rejection lets the customer retry), and emptied
+    // only once the shop commits by accepting.
+    @Transactional
+    public void clearCartForUser(Long userId) {
+        if (userId == null) {
+            return;
+        }
+        consumerCartViewRepository.deleteById(userId);
+    }
+
     private ConsumerCartView requireCart(Long userId) {
         return consumerCartViewRepository.findById(userId)
                 .filter(cart -> cart.getItems() != null && !cart.getItems().isEmpty())

@@ -17,17 +17,20 @@ public class ShopProductServiceImpl implements ShopProductService {
     private final ShopTypeFamilyResolver shopTypeFamilyResolver;
     private final ProviderShopProductTypeRegistry providerShopProductTypeRegistry;
     private final ShopShellViewService shopShellViewService;
+    private final ShopProductWriteService shopProductWriteService;
 
     public ShopProductServiceImpl(
             ShopContextService shopContextService,
             ShopTypeFamilyResolver shopTypeFamilyResolver,
             ProviderShopProductTypeRegistry providerShopProductTypeRegistry,
-            ShopShellViewService shopShellViewService
+            ShopShellViewService shopShellViewService,
+            ShopProductWriteService shopProductWriteService
     ) {
         this.shopContextService = shopContextService;
         this.shopTypeFamilyResolver = shopTypeFamilyResolver;
         this.providerShopProductTypeRegistry = providerShopProductTypeRegistry;
         this.shopShellViewService = shopShellViewService;
+        this.shopProductWriteService = shopProductWriteService;
     }
 
     @Override
@@ -73,5 +76,14 @@ public class ShopProductServiceImpl implements ShopProductService {
                 .updateProductStatus(shop, productId, request);
         shopShellViewService.checkAndUpdateBusinessSetupComplete(shop.getShopId());
         return result;
+    }
+
+    // Availability is shop-type-agnostic (just flips quantityAvailable), so it
+    // bypasses the per-type product handlers.
+    @Override
+    @Transactional
+    public void updateProductAvailability(Long productId, boolean available) {
+        ShopShellView shop = shopContextService.currentApprovedShop();
+        shopProductWriteService.updateProductAvailability(productId, shop.getShopId(), available);
     }
 }

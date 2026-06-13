@@ -6,7 +6,9 @@ import com.msa.shop_orders.consumer.order.dto.ConsumerOrderItemData;
 import com.msa.shop_orders.consumer.order.dto.ConsumerOrderTimelineEventData;
 import com.msa.shop_orders.consumer.order.dto.ConsumerRefundSummaryData;
 import com.msa.shop_orders.consumer.order.dto.ConsumerOrderSummaryData;
+import com.msa.shop_orders.consumer.order.dto.ConsumerOrderReviewRequest;
 import com.msa.shop_orders.provider.shop.view.ShopOrderView;
+import com.msa.shop_orders.provider.shop.view.repository.ShopOrderViewRepository;
 import com.msa.shop_orders.provider.shop.service.ShopRuntimeViewService;
 import com.msa.shop_orders.security.CurrentUserService;
 import java.time.Duration;
@@ -14,18 +16,53 @@ import java.time.LocalDateTime;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class ConsumerOrderService {
     private final CurrentUserService currentUserService;
     private final ShopRuntimeViewService shopRuntimeViewService;
+    private final ShopOrderViewRepository shopOrderViewRepository;
 
     public ConsumerOrderService(
             CurrentUserService currentUserService,
-            ShopRuntimeViewService shopRuntimeViewService
+            ShopRuntimeViewService shopRuntimeViewService,
+            ShopOrderViewRepository shopOrderViewRepository
     ) {
         this.currentUserService = currentUserService;
         this.shopRuntimeViewService = shopRuntimeViewService;
+        this.shopOrderViewRepository = shopOrderViewRepository;
+    }
+
+    // Records a customer's 1-5 rating (+ optional comment) for a delivered order.
+    @Transactional
+    public void submitReview(Long orderId, ConsumerOrderReviewRequest request) {
+        Long userId = currentUserService.currentUser().userId();
+        ShopOrderView order = shopRuntimeViewService.loadConsumerOrder(userId, orderId);
+        if (order == null) {
+            throw new BusinessException("ORDER_NOT_FOUND", "Order not found.", HttpStatus.NOT_FOUND);
+        }
+        String status = order.getOrderStatus() == null ? "" : order.getOrderStatus().trim().toUpperCase();
+        if (!"DELIVERED".equals(status)) {
+            throw new BusinessException(
+                    "ORDER_NOT_DELIVERED",
+                    "You can rate an order only after it is delivered.",
+                    HttpStatus.BAD_REQUEST);
+        }
+        if (order.getRating() != null) {
+            throw new BusinessException(
+                    "ALREADY_REVIEWED", "You have already rated this order.", HttpStatus.BAD_REQUEST);
+        }
+        int rating = request == null || request.rating() == null ? 0 : request.rating();
+        if (rating < 1 || rating > 5) {
+            throw new BusinessException(
+                    "INVALID_RATING", "Rating must be between 1 and 5.", HttpStatus.BAD_REQUEST);
+        }
+        order.setRating(rating);
+        String comment = request.comment();
+        order.setReviewComment(comment == null || comment.isBlank() ? null : comment.trim());
+        order.setReviewedAt(LocalDateTime.now());
+        shopOrderViewRepository.save(order);
     }
 
     public List<ConsumerOrderSummaryData> orders() {
@@ -78,6 +115,7 @@ public class ConsumerOrderService {
                 document.getOrderCode(),
                 document.getShopId(),
                 document.getShopName(),
+                document.getShopPhone(),
                 document.getOrderStatus(),
                 document.getPaymentStatus(),
                 document.getPaymentCode(),
@@ -109,7 +147,9 @@ public class ConsumerOrderService {
                 isOutForDelivery(document) ? document.getDeliveryAgentLatitude() : null,
                 isOutForDelivery(document) ? document.getDeliveryAgentLongitude() : null,
                 isOutForDelivery(document) ? document.getDeliveryAgentLocationAt() : null,
-                paymentSecondsRemaining(document)
+                paymentSecondsRemaining(document),
+                document.getRating(),
+                document.getReviewComment()
         );
     }
 

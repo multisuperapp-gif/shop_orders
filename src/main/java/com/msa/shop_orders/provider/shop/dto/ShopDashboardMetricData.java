@@ -6,6 +6,9 @@ public record ShopDashboardMetricData(
         long orders,
         long completed,
         long cancelled,
-        BigDecimal orderValue
+        // Gross value of every order in the period (kept for reference).
+        BigDecimal orderValue,
+        // Actual earnings: paid orders that were not cancelled/rejected.
+        BigDecimal earnings
 ) {
 }

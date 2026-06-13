@@ -2,6 +2,7 @@ package com.msa.shop_orders.provider.shop.controller;
 
 import com.msa.shop_orders.common.api.ApiResponse;
 import com.msa.shop_orders.provider.shop.dto.ShopCreateProductRequest;
+import com.msa.shop_orders.provider.shop.dto.ShopProductAvailabilityUpdateRequest;
 import com.msa.shop_orders.provider.shop.dto.ShopProductData;
 import com.msa.shop_orders.provider.shop.dto.ShopProductStatusUpdateRequest;
 import com.msa.shop_orders.provider.shop.service.ShopProductService;
@@ -45,5 +46,17 @@ public class ShopProductController {
                 ? "Shop product reactivated successfully."
                 : "Shop product archived successfully.";
         return ApiResponse.success(message, shopProductService.updateProductStatus(productId, request));
+    }
+
+    // Availability toggle (restaurants): in stock / out of stock without
+    // hiding the item from the menu.
+    @PatchMapping("/{productId}/availability")
+    public ApiResponse<Void> updateProductAvailability(
+            @PathVariable Long productId,
+            @Valid @RequestBody ShopProductAvailabilityUpdateRequest request
+    ) {
+        boolean available = Boolean.TRUE.equals(request.available());
+        shopProductService.updateProductAvailability(productId, available);
+        return ApiResponse.success(available ? "Item marked available." : "Item marked out of stock.");
     }
 }

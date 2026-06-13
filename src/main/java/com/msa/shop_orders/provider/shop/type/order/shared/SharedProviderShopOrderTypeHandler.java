@@ -27,19 +27,22 @@ public class SharedProviderShopOrderTypeHandler implements ProviderShopOrderType
     private final ShopOrdersBookingPaymentOrderClient bookingPaymentOrderClient;
     private final ShopOrderViewRepository shopOrderViewRepository;
     private final com.msa.shop_orders.internal.finance.order.service.InternalFinanceOrderSyncService internalFinanceOrderSyncService;
+    private final com.msa.shop_orders.consumer.cart.service.ConsumerCartService consumerCartService;
 
     public SharedProviderShopOrderTypeHandler(
             ShopRuntimeViewService shopRuntimeViewService,
             ShopOrderStateWriteService shopOrderStateWriteService,
             ShopOrdersBookingPaymentOrderClient bookingPaymentOrderClient,
             ShopOrderViewRepository shopOrderViewRepository,
-            com.msa.shop_orders.internal.finance.order.service.InternalFinanceOrderSyncService internalFinanceOrderSyncService
+            com.msa.shop_orders.internal.finance.order.service.InternalFinanceOrderSyncService internalFinanceOrderSyncService,
+            com.msa.shop_orders.consumer.cart.service.ConsumerCartService consumerCartService
     ) {
         this.shopRuntimeViewService = shopRuntimeViewService;
         this.shopOrderStateWriteService = shopOrderStateWriteService;
         this.bookingPaymentOrderClient = bookingPaymentOrderClient;
         this.shopOrderViewRepository = shopOrderViewRepository;
         this.internalFinanceOrderSyncService = internalFinanceOrderSyncService;
+        this.consumerCartService = consumerCartService;
     }
 
     @Override
@@ -110,7 +113,14 @@ public class SharedProviderShopOrderTypeHandler implements ProviderShopOrderType
         );
         ShopOrderView notifyTarget = orderView != null ? orderView : existing;
         if ("ACCEPTED".equals(newStatus) && "PENDING_ACCEPTANCE".equals(oldStatus)) {
-            // Accept-first: opens the customer's 5-minute payment window.
+            // Accept-first: opens the customer's 5-minute payment window. The
+            // shop has committed, so empty the customer's cart now (it was kept
+            // intact until acceptance so a rejection could be retried).
+            try {
+                consumerCartService.clearCartForUser(existing.getUserId());
+            } catch (Exception ignored) {
+                // Cart clear is best-effort — never fail the acceptance on it.
+            }
             notifyOrderEvent("ORDER_ACCEPTED", notifyTarget, null);
         } else {
             // Every other forward status change (preparing/dispatched/out for

@@ -9,6 +9,7 @@ public record ConsumerOrderDetailData(
         String orderCode,
         Long shopId,
         String shopName,
+        String shopPhone,
         String orderStatus,
         String paymentStatus,
         String paymentCode,
@@ -38,6 +39,9 @@ public record ConsumerOrderDetailData(
         LocalDateTime deliveryAgentLocationAt,
         // Seconds left in the 5-minute payment window (only for unpaid
         // ACCEPTED / PAYMENT_PENDING orders; null otherwise).
-        Long paymentSecondsRemaining
+        Long paymentSecondsRemaining,
+        // Customer rating (1-5) + comment, null until the order is reviewed.
+        Integer reviewRating,
+        String reviewComment
 ) {
 }

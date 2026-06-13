@@ -132,6 +132,10 @@ public class ShopRuntimeViewService {
 
     public ShopDashboardSummaryData loadSummary(ShopShellView shopEntity) {
         List<ShopOrderData> orders = shopOrderViewRepository.findByShopIdOrderByCreatedAtDesc(shopEntity.getShopId()).stream()
+                // A rejected order (shop rejected, or customer cancelled before
+                // acceptance) does not count as an order — exclude from all
+                // dashboard metrics.
+                .filter(order -> !"REJECTED".equalsIgnoreCase(order.getOrderStatus()))
                 .map(this::toShopOrderData)
                 .toList();
         LocalDateTime todayStart = LocalDate.now().atStartOfDay();
@@ -141,7 +145,9 @@ public class ShopRuntimeViewService {
                 metric(orders, todayStart),
                 metric(orders, monthStart),
                 metric(orders, weekStart),
-                metric(orders, null)
+                metric(orders, null),
+                shopEntity.getAvgRating(),
+                shopEntity.getTotalReviews() == null ? 0 : shopEntity.getTotalReviews()
         );
     }
 
@@ -341,6 +347,8 @@ public class ShopRuntimeViewService {
                 document.getDeliveryLongitude(),
                 resolveCancelReason(document),
                 document.getCancelledBy(),
+                document.getRating(),
+                document.getReviewComment(),
                 Optional.ofNullable(document.getItems()).orElse(List.of()).stream()
                         .map(item -> new ShopOrderItemData(
                                 item.getItemName(),
@@ -389,7 +397,24 @@ public class ShopRuntimeViewService {
                 .map(ShopOrderData::totalOrderValue)
                 .filter(Objects::nonNull)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
-        return new ShopDashboardMetricData(filtered.size(), completed, cancelled, orderValue);
+        // Earnings count only paid orders that weren't cancelled/rejected — the
+        // money the shop actually made (excludes pending/unpaid + cancelled).
+        BigDecimal earnings = filtered.stream()
+                .filter(this::isEarningOrder)
+                .map(ShopOrderData::totalOrderValue)
+                .filter(Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        return new ShopDashboardMetricData(filtered.size(), completed, cancelled, orderValue, earnings);
+    }
+
+    // An order contributes to earnings only when it has been paid and is not in
+    // a cancelled/rejected terminal state.
+    private boolean isEarningOrder(ShopOrderData order) {
+        String status = order.orderStatus() == null ? "" : order.orderStatus().trim().toUpperCase();
+        String payment = order.paymentStatus() == null ? "" : order.paymentStatus().trim().toUpperCase();
+        boolean paid = "PAID".equals(payment) || "PAYMENT_COMPLETED".equals(payment) || "COMPLETED".equals(payment);
+        boolean cancelledOrRejected = "CANCELLED".equals(status) || "REJECTED".equals(status);
+        return paid && !cancelledOrRejected;
     }
 
     private boolean sameDay(LocalDateTime createdAt, LocalDate day) {

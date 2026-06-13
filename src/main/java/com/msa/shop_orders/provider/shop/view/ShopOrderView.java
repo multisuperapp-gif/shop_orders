@@ -31,6 +31,9 @@ public class ShopOrderView {
 
     private String orderCode;
     private String shopName;
+    // Shop's contact phone (owner), captured at placement so the customer can
+    // call the restaurant about a live order.
+    private String shopPhone;
     private String customerName;
     private String customerPhone;
     private String paymentStatus;
@@ -63,6 +66,10 @@ public class ShopOrderView {
     private BigDecimal deliveryAgentLatitude;
     private BigDecimal deliveryAgentLongitude;
     private LocalDateTime deliveryAgentLocationAt;
+    // Customer rating (1-5) + optional comment, set once after delivery.
+    private Integer rating;
+    private String reviewComment;
+    private LocalDateTime reviewedAt;
     private List<Item> items;
     private List<TimelineEvent> timeline;
 

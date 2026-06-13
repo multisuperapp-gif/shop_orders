@@ -130,7 +130,10 @@ public class SharedConsumerOrderPlacementTypeHandler implements ConsumerOrderPla
                 "Order placed and stock reserved."
         );
         shopRuntimeSyncService.syncOrderAfterCommit(createdOrder.orderId(), orderView);
-        consumerCartService.clearCurrentCart();
+        // NOTE: the cart is intentionally NOT cleared here. It stays intact while
+        // the order is PENDING_ACCEPTANCE so that, if the shop rejects, the
+        // customer can retry from the same cart. The cart is cleared only when
+        // the shop ACCEPTS the order (see SharedProviderShopOrderTypeHandler).
 
         // Accept-first: tell the shop a new order request is waiting for acceptance.
         notifyShopOrderRequest(createdOrder);

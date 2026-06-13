@@ -3,9 +3,11 @@ package com.msa.shop_orders.consumer.order.controller;
 import com.msa.shop_orders.common.api.ApiResponse;
 import com.msa.shop_orders.consumer.order.dto.ConsumerCancelOrderRequest;
 import com.msa.shop_orders.consumer.order.dto.ConsumerOrderDetailData;
+import com.msa.shop_orders.consumer.order.dto.ConsumerOrderReviewRequest;
 import com.msa.shop_orders.consumer.order.dto.ConsumerOrderSummaryData;
 import com.msa.shop_orders.consumer.order.service.ConsumerOrderLifecycleService;
 import com.msa.shop_orders.consumer.order.service.ConsumerOrderService;
+import jakarta.validation.Valid;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -45,5 +47,14 @@ public class ConsumerOrderController {
     ) {
         consumerOrderLifecycleService.cancel(orderId, request == null ? null : request.reason());
         return ApiResponse.success("Shop order cancelled successfully");
+    }
+
+    @PostMapping("/orders/{orderId}/review")
+    public ApiResponse<Void> review(
+            @PathVariable Long orderId,
+            @Valid @RequestBody ConsumerOrderReviewRequest request
+    ) {
+        consumerOrderService.submitReview(orderId, request);
+        return ApiResponse.success("Thanks for rating your order");
     }
 }
