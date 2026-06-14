@@ -62,6 +62,17 @@ public class ShopShellViewService {
         if (document == null || document.getShopId() == null) {
             return;
         }
+        // Preserve the MongoDB-managed rating: the incoming document is rebuilt from
+        // the SQL shop (which doesn't track order ratings), so carry over the existing
+        // recomputed avgRating / totalReviews instead of resetting them to 0.
+        shopShellViewRepository.findById(document.getShopId()).ifPresent(existing -> {
+            if (existing.getAvgRating() != null) {
+                document.setAvgRating(existing.getAvgRating());
+            }
+            if (existing.getTotalReviews() != null) {
+                document.setTotalReviews(existing.getTotalReviews());
+            }
+        });
         shopShellViewRepository.save(document);
     }
 
@@ -111,8 +122,15 @@ public class ShopShellViewService {
         shell.setRestaurantServiceType(shop.getRestaurantServiceType());
         shell.setApprovalStatus(shop.getApprovalStatus());
         shell.setOperationalStatus(shop.getOperationalStatus());
-        shell.setAvgRating(shop.getAvgRating() == null ? BigDecimal.ZERO : shop.getAvgRating());
-        shell.setTotalReviews(shop.getTotalReviews() == null ? 0 : shop.getTotalReviews());
+        // avgRating / totalReviews are MongoDB-managed (recomputeShopRating writes them
+        // from the shop's order reviews) — preserve the existing values instead of
+        // overwriting with the SQL shop, which never tracks order ratings.
+        if (shell.getAvgRating() == null) {
+            shell.setAvgRating(BigDecimal.ZERO);
+        }
+        if (shell.getTotalReviews() == null) {
+            shell.setTotalReviews(0);
+        }
         // businessSetupComplete is intentionally preserved from MongoDB —
         // it is managed exclusively by checkAndUpdateBusinessSetupComplete().
         shopShellViewRepository.save(shell);

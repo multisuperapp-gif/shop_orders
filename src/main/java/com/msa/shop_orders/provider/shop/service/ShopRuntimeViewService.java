@@ -23,6 +23,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.Duration;
@@ -144,13 +145,25 @@ public class ShopRuntimeViewService {
         LocalDateTime todayStart = LocalDate.now().atStartOfDay();
         LocalDateTime weekStart = LocalDate.now().with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)).atStartOfDay();
         LocalDateTime monthStart = LocalDate.now().withDayOfMonth(1).atStartOfDay();
+        // Aggregate the rating straight from the shop's rated orders so it always
+        // reflects reality — the stored shell value gets reset to 0 whenever the shop
+        // is re-synced from SQL (which never tracks order ratings).
+        List<Integer> ratings = orders.stream()
+                .map(ShopOrderData::rating)
+                .filter(value -> value != null && value > 0)
+                .toList();
+        BigDecimal avgRating = ratings.isEmpty()
+                ? BigDecimal.ZERO.setScale(2, RoundingMode.HALF_UP)
+                : BigDecimal.valueOf(
+                        ratings.stream().mapToInt(Integer::intValue).average().orElse(0))
+                    .setScale(2, RoundingMode.HALF_UP);
         return new ShopDashboardSummaryData(
                 metric(orders, todayStart),
                 metric(orders, monthStart),
                 metric(orders, weekStart),
                 metric(orders, null),
-                shopEntity.getAvgRating(),
-                shopEntity.getTotalReviews() == null ? 0 : shopEntity.getTotalReviews()
+                avgRating,
+                ratings.size()
         );
     }
 

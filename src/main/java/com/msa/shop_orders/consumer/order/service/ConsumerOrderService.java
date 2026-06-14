@@ -12,6 +12,8 @@ import com.msa.shop_orders.provider.shop.view.repository.ShopOrderViewRepository
 import com.msa.shop_orders.provider.shop.view.repository.ShopShellViewRepository;
 import com.msa.shop_orders.provider.shop.service.ShopRuntimeViewService;
 import com.msa.shop_orders.security.CurrentUserService;
+import com.msa.shop_orders.persistence.entity.UserEntity;
+import com.msa.shop_orders.persistence.repository.UserRepository;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Duration;
@@ -27,17 +29,20 @@ public class ConsumerOrderService {
     private final ShopRuntimeViewService shopRuntimeViewService;
     private final ShopOrderViewRepository shopOrderViewRepository;
     private final ShopShellViewRepository shopShellViewRepository;
+    private final UserRepository userRepository;
 
     public ConsumerOrderService(
             CurrentUserService currentUserService,
             ShopRuntimeViewService shopRuntimeViewService,
             ShopOrderViewRepository shopOrderViewRepository,
-            ShopShellViewRepository shopShellViewRepository
+            ShopShellViewRepository shopShellViewRepository,
+            UserRepository userRepository
     ) {
         this.currentUserService = currentUserService;
         this.shopRuntimeViewService = shopRuntimeViewService;
         this.shopOrderViewRepository = shopOrderViewRepository;
         this.shopShellViewRepository = shopShellViewRepository;
+        this.userRepository = userRepository;
     }
 
     // Records a customer's 1-5 rating (+ optional comment) for a delivered order.
@@ -141,13 +146,30 @@ public class ConsumerOrderService {
         );
     }
 
+    // The customer's "Contact restaurant" button needs the shop phone. It is
+    // captured on the order at creation, but older orders (or a shop owner whose
+    // phone wasn't set then) have none — so fall back to resolving the owner's
+    // phone live, which makes the button reliably appear on live orders.
+    private String resolveShopPhone(ShopOrderView document) {
+        String stored = document.getShopPhone();
+        if (stored != null && !stored.isBlank()) {
+            return stored;
+        }
+        return shopShellViewRepository.findById(document.getShopId())
+                .map(com.msa.shop_orders.provider.shop.view.ShopShellView::getOwnerUserId)
+                .flatMap(ownerId -> userRepository.findById(ownerId))
+                .map(UserEntity::getPhone)
+                .filter(phone -> phone != null && !phone.isBlank())
+                .orElse(stored);
+    }
+
     private ConsumerOrderDetailData toDetailData(ShopOrderView document) {
         return new ConsumerOrderDetailData(
                 document.getOrderId(),
                 document.getOrderCode(),
                 document.getShopId(),
                 document.getShopName(),
-                document.getShopPhone(),
+                resolveShopPhone(document),
                 document.getOrderStatus(),
                 document.getPaymentStatus(),
                 document.getPaymentCode(),
