@@ -6,7 +6,7 @@ import org.springframework.stereotype.Component;
 @Component
 @ConfigurationProperties(prefix = "app.storage")
 public class ShopMediaStorageProperties {
-    private String provider = "LOCAL";
+    private String provider = "S3";
     private String localRoot = "../Auth-VerificationService/storage/local";
     private String awsRegion = "us-east-1";
     private final BucketProperties publicMedia = new BucketProperties();
