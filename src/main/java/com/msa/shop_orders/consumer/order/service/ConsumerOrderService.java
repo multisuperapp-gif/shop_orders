@@ -179,6 +179,7 @@ public class ConsumerOrderService {
                 isOutForDelivery(document) ? document.getDeliveryAgentLatitude() : null,
                 isOutForDelivery(document) ? document.getDeliveryAgentLongitude() : null,
                 isOutForDelivery(document) ? document.getDeliveryAgentLocationAt() : null,
+                isOutForDelivery(document) ? document.getDeliveryRoutePolyline() : null,
                 paymentSecondsRemaining(document),
                 // Customer only needs the completion OTP while it's out for delivery.
                 isOutForDelivery(document) ? document.getDeliveryOtp() : null,

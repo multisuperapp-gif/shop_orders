@@ -66,6 +66,9 @@ public class ShopOrderView {
     private BigDecimal deliveryAgentLatitude;
     private BigDecimal deliveryAgentLongitude;
     private LocalDateTime deliveryAgentLocationAt;
+    // Encoded polyline of the route the delivery agent currently has selected,
+    // streamed alongside the live location so the customer mirrors the driver.
+    private String deliveryRoutePolyline;
     // Delivery completion OTP: generated when the order goes OUT_FOR_DELIVERY,
     // shown to the customer, and entered by the shop to mark it delivered.
     // Cleared once the order is delivered.

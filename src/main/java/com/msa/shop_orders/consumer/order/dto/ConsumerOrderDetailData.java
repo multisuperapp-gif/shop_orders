@@ -37,6 +37,10 @@ public record ConsumerOrderDetailData(
         BigDecimal deliveryAgentLatitude,
         BigDecimal deliveryAgentLongitude,
         LocalDateTime deliveryAgentLocationAt,
+        // Encoded polyline of the route the delivery agent currently has selected,
+        // so the customer's map shows the exact route the driver picked (null
+        // unless the order is out for delivery and the driver has shared one).
+        String deliveryRoutePolyline,
         // Seconds left in the 5-minute payment window (only for unpaid
         // ACCEPTED / PAYMENT_PENDING orders; null otherwise).
         Long paymentSecondsRemaining,

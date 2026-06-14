@@ -72,6 +72,11 @@ public class ShopOrderServiceImpl implements ShopOrderService {
         order.setDeliveryAgentLatitude(BigDecimal.valueOf(request.latitude()));
         order.setDeliveryAgentLongitude(BigDecimal.valueOf(request.longitude()));
         order.setDeliveryAgentLocationAt(LocalDateTime.now());
+        // Mirror the agent's currently-selected route to the customer (kept as-is
+        // when the request omits it, so a transient null never clears the route).
+        if (request.routePolyline() != null && !request.routePolyline().isBlank()) {
+            order.setDeliveryRoutePolyline(request.routePolyline());
+        }
         shopOrderViewRepository.save(order);
     }
 }
