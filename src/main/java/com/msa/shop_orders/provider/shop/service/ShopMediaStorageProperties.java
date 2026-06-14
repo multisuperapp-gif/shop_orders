@@ -45,7 +45,7 @@ public class ShopMediaStorageProperties {
     }
 
     public static class BucketProperties {
-        private String bucket = "";
+        private String bucket = "multisuperapp1-bucket";
 
         public String getBucket() {
             return bucket;
