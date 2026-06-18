@@ -4,6 +4,7 @@ import com.msa.shop_orders.common.exception.BusinessException;
 import com.msa.shop_orders.integration.bookingpayment.ShopOrdersBookingPaymentOrderClient;
 import com.msa.shop_orders.integration.bookingpayment.dto.ShopOrdersBookingPaymentApiResponse;
 import com.msa.shop_orders.integration.bookingpayment.dto.ShopOrdersBookingPaymentOrderDtos.CancelShopOrderRequest;
+import com.msa.shop_orders.integration.bookingpayment.dto.ShopOrdersBookingPaymentOrderDtos.NotifyShopOrderEventRequest;
 import com.msa.shop_orders.internal.finance.order.service.InternalFinanceOrderSyncService;
 import com.msa.shop_orders.provider.shop.view.ShopOrderView;
 import com.msa.shop_orders.provider.shop.service.ShopOrderStateWriteService;
@@ -74,6 +75,23 @@ public class ConsumerOrderLifecycleService {
                             "CUSTOMER"
                     )
             );
+            // After the shop has accepted, a customer cancellation is one the shop must hear
+            // about: push it so the business app moves the order out of the live dashboard
+            // into order history (and rings). Best-effort — never fail the cancel on a push.
+            if ("CANCELLED".equals(terminalStatus)) {
+                try {
+                    shopOrdersBookingPaymentOrderClient.notifyOrderEvent(new NotifyShopOrderEventRequest(
+                            "ORDER_CANCELLED_BY_CUSTOMER",
+                            order.getShopId(),
+                            order.getUserId(),
+                            order.getOrderId(),
+                            order.getOrderCode(),
+                            "The customer cancelled the order before payment."
+                    ));
+                } catch (Exception ignored) {
+                    // notification failure must not abort the cancellation
+                }
+            }
             return;
         }
 
