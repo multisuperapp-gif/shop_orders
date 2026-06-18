@@ -67,17 +67,18 @@ public class ShopOrderPaymentTimeoutScheduler {
                 continue;
             }
             try {
-                // Unpaid timeout — auto-reject locally (no payment to refund):
-                // release the reserved stock, mark REJECTED (treated like a
-                // no-accept; hidden from customer + shop, admin-only), and notify.
+                // Unpaid timeout (no payment to refund): release the reserved stock,
+                // then mark the order CANCELLED with reason "Payment window expired"
+                // so it leaves the live view and shows in both apps' order history
+                // as a cancelled order (not the hidden admin-only REJECTED state).
                 internalFinanceOrderSyncService.releaseInventory(order.getOrderId());
                 shopOrderStateWriteService.applyStateUpdate(
                         order.getOrderId(),
                         new ShopOrderStateWriteService.OrderStateMutation(
-                                "REJECTED",
+                                "CANCELLED",
                                 "FAILED",
                                 null,
-                                "Payment time expired — order auto-rejected.",
+                                "Payment window expired.",
                                 null,
                                 "SYSTEM"
                         )
