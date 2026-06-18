@@ -1,0 +1,33 @@
+spring:
+  application:
+    name: shop_orders
+  datasource:
+    url: ${DB_URL:jdbc:mysql://multisuperapp1.cj4wu46oy158.eu-north-1.rds.amazonaws.com:3306/hyperlocal_platform}
+    username: ${DB_USERNAME:admin}
+    password: ${DB_PASSWORD:multisuperapp1}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
+  flyway:
+    enabled: ${FLYWAY_ENABLED:false}
+    baseline-on-migrate: ${FLYWAY_BASELINE_ON_MIGRATE:true}
+    url: ${FLYWAY_URL:${DB_URL:jdbc:mysql://multisuperapp1.cj4wu46oy158.eu-north-1.rds.amazonaws.com:3306/hyperlocal_platform}}
+    user: ${FLYWAY_USER:${DB_USERNAME:admin}}
+    password: ${FLYWAY_PASSWORD:${DB_PASSWORD:multisuperapp1}}
+
+server:
+  port: ${SERVER_PORT:8083}
+
+app:
+  security:
+    access-token-secret: ${ACCESS_TOKEN_SECRET:auth-verification-service-super-secret-key}
+    access-token-validity-seconds: ${ACCESS_TOKEN_VALIDITY_SECONDS:86400}
+    refresh-token-validity-seconds: ${REFRESH_TOKEN_VALIDITY_SECONDS:2592000}
+  otp:
+    hardcoded-value: ${HARDCODED_OTP:123456}
+    hardcoded-aadhaar-otp: ${HARDCODED_AADHAAR_OTP:654321}
+    expiry-seconds: ${OTP_EXPIRY_SECONDS:300}

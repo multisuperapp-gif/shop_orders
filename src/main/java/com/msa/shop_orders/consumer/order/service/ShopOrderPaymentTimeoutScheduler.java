@@ -42,15 +42,19 @@ public class ShopOrderPaymentTimeoutScheduler {
         this.shopOrderStateWriteService = shopOrderStateWriteService;
     }
 
-    // Runs every minute. Cheap query (status + timestamp) over shop orders.
-    // Covers both ACCEPTED (payment never started) and PAYMENT_PENDING (payment
-    // sheet opened but abandoned) — both mean the 5-minute window lapsed unpaid.
-    @Scheduled(fixedDelay = 60_000L, initialDelay = 60_000L)
+    // Runs every 15s so an order is cancelled right when its on-screen 5-minute
+    // countdown reaches 0 (not up to a minute later). Cheap query (status +
+    // timestamp). Covers both ACCEPTED (payment never started) and PAYMENT_PENDING
+    // (payment sheet opened but abandoned) — both mean the window lapsed unpaid.
+    // The window is anchored to createdAt (fixed at acceptance for accept-first
+    // orders), NOT updatedAt — updatedAt is bumped by the ACCEPTED->PAYMENT_PENDING
+    // write, which used to reset this window and let the order outlive the timer.
+    @Scheduled(fixedDelay = 15_000L, initialDelay = 15_000L)
     public void cancelExpiredAcceptedOrders() {
         LocalDateTime cutoff = LocalDateTime.now(SHOP_ZONE).minusMinutes(PAYMENT_WINDOW_MINUTES);
         List<ShopOrderView> expired;
         try {
-            expired = shopOrderViewRepository.findByOrderStatusInAndUpdatedAtBefore(
+            expired = shopOrderViewRepository.findByOrderStatusInAndCreatedAtBefore(
                     List.of("ACCEPTED", "PAYMENT_PENDING"), cutoff);
         } catch (Exception exception) {
             log.warn("Failed to query expired accepted shop orders", exception);

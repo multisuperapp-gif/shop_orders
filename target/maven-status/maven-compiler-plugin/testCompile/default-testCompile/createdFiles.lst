@@ -1,0 +1,9 @@
+com/msa/shop_orders/ShopOrdersApplicationTests.class
+com/msa/shop_orders/provider/shop/service/ShopProductWriteServiceTest.class
+com/msa/shop_orders/consumer/payment/service/ConsumerPaymentServiceTest.class
+com/msa/shop_orders/provider/shop/service/ShopOrderStateWriteServiceTest.class
+com/msa/shop_orders/consumer/storefront/service/StorefrontCatalogServiceTest.class
+com/msa/shop_orders/provider/shop/service/ShopCategoryServiceImplTest.class
+com/msa/shop_orders/internal/finance/order/service/InternalFinanceOrderSyncServiceTest.class
+com/msa/shop_orders/provider/shop/type/product/restaurant/RestaurantProductRequestNormalizerTest.class
+com/msa/shop_orders/consumer/order/service/ShopOrderWriteServiceTest.class

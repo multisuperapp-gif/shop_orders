@@ -233,7 +233,9 @@ public class ConsumerOrderService {
             }
         }
         if (acceptedAt == null) {
-            acceptedAt = document.getUpdatedAt();
+            // Fall back to the FIXED creation time, never updatedAt (which is bumped
+            // by later writes and would reset/extend the window past the countdown).
+            acceptedAt = document.getCreatedAt();
         }
         if (acceptedAt == null) {
             return PAYMENT_WINDOW_SECONDS;

@@ -1,0 +1,9 @@
+/private/tmp/so_fix/src/test/java/com/msa/shop_orders/ShopOrdersApplicationTests.java
+/private/tmp/so_fix/src/test/java/com/msa/shop_orders/consumer/order/service/ShopOrderWriteServiceTest.java
+/private/tmp/so_fix/src/test/java/com/msa/shop_orders/consumer/payment/service/ConsumerPaymentServiceTest.java
+/private/tmp/so_fix/src/test/java/com/msa/shop_orders/consumer/storefront/service/StorefrontCatalogServiceTest.java
+/private/tmp/so_fix/src/test/java/com/msa/shop_orders/internal/finance/order/service/InternalFinanceOrderSyncServiceTest.java
+/private/tmp/so_fix/src/test/java/com/msa/shop_orders/provider/shop/service/ShopCategoryServiceImplTest.java
+/private/tmp/so_fix/src/test/java/com/msa/shop_orders/provider/shop/service/ShopOrderStateWriteServiceTest.java
+/private/tmp/so_fix/src/test/java/com/msa/shop_orders/provider/shop/service/ShopProductWriteServiceTest.java
+/private/tmp/so_fix/src/test/java/com/msa/shop_orders/provider/shop/type/product/restaurant/RestaurantProductRequestNormalizerTest.java
